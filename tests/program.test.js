@@ -271,3 +271,22 @@ test("run sessions carry no lift fields", () => {
   assert.ok(r.run !== undefined, "run field must exist");
   assert.equal(typeof r.slot, "number");
 });
+
+test("sportFor: runs default to 'run', swap to 'bike' per date, lifts are 'lift'", () => {
+  const s = capacityState();
+  const sess = Program.buildSessions(s);
+  const run = sess.find(x => x.kind === "run");
+  const lift = sess.find(x => x.kind === "lift");
+  assert.equal(Program.sportFor(s, run), "run");
+  s.sessionSwap[run.dateStr] = "bike";
+  assert.equal(Program.sportFor(s, run), "bike");
+  assert.equal(Program.sportFor(s, lift), "lift");
+});
+
+test("enduranceOverrides: sparse per-week/slot override wins over the book table", () => {
+  const s = capacityState();
+  s.enduranceOverrides[2] = { 1: { type: "fixed", min: 45 } };
+  assert.deepEqual(Program.runSpecAt(s, 2, 1), { type: "fixed", min: 45 });
+  assert.deepEqual(Program.runSpecAt(s, 2, 0), { type: "range", lo: 30, hi: 60 }); // untouched slot
+  assert.deepEqual(Program.runSpecAt(s, 3, 1), { type: "range", lo: 30, hi: 60 }); // untouched week
+});

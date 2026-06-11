@@ -73,6 +73,11 @@ const Program = (() => {
     return raw ? Object.assign({}, raw) : null;
   }
 
+  function sportFor(state, session) {
+    if (session.kind !== "run") return "lift";
+    return (state.sessionSwap || {})[session.dateStr] === "bike" ? "bike" : "run";
+  }
+
   function runLabel(spec) {
     if (!spec) return "";
     if (spec.type === "range") return spec.lo + "–" + spec.hi + "′";
@@ -97,7 +102,7 @@ const Program = (() => {
       template: "operator6", theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
       increment: 2.5, bodyweight: null, sessionTime: "17:30", durationMin: 75,
       liftDays: [1, 3, 5],
-      runDays: [2, 4, 6], enduranceOverrides: {},
+      runDays: [2, 4, 6], enduranceOverrides: {}, sessionSwap: {},
       lifts: [
         { id: "fsq", name: "Front Squat", type: "barbell", enabled: true, tm: null, role: "core", blockStep: 5 },
         { id: "sdl", name: "Sumo Deadlift", type: "barbell", enabled: true, tm: null, role: "rotating", blockStep: 5 },
@@ -185,7 +190,7 @@ const Program = (() => {
   return {
     CYCLE, TEMPLATES, CAPACITY_RUNS, todayDate, ymd, parseYMD, addDays, roundTo, defaults,
     enabledLifts, coreLifts, rotatingLifts, hasAnyTM,
-    buildSessions, blockOf, effectiveTM, template, weekSpec, runSpecAt, runLabel,
+    buildSessions, blockOf, effectiveTM, template, weekSpec, runSpecAt, runLabel, sportFor,
     rotForWeekday, chosenRotating, sessionLifts,
     targetFor, sessionTargets, currentSession,
   };
