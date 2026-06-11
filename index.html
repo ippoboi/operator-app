@@ -153,6 +153,15 @@
   .cal-chip.gold{background:rgba(214,164,65,.12);color:var(--amber)}
   .cal-chip .dot{width:5px;height:5px;flex-shrink:0}
 
+  /* plan vs actual */
+  .pva{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+  .actual{border-left:1px solid var(--line);padding:14px 18px;min-width:0}
+  .actual .eyebrow{display:block;margin-bottom:8px}
+  .actual-name{font-size:13.5px;font-weight:600;margin-bottom:2px}
+  .actual-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:8px}
+  .actual-desc{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:pre-wrap;line-height:1.6;margin:0}
+  @media (max-width:760px){.pva{grid-template-columns:1fr}.actual{border-left:none;border-top:1px solid var(--line)}}
+
   /* progress */
   .chart-head{display:flex;align-items:center;gap:8px;margin:22px 0 12px;flex-wrap:wrap}
   .chip{font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 11px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
@@ -379,6 +388,25 @@ function liftRowsHtml(session){
   }).join("");
 }
 
+function actualHtml(s){
+  const a=state.activities[s.dateStr];
+  if(state.status[s.dateStr]!=="done"||!a)return "";
+  const secs=a.movingSec||a.durationSec||0;
+  let meta=Math.round(secs/60)+"′";
+  if(a.distanceKm){
+    const p=secs/a.distanceKm;
+    meta+=` · ${a.distanceKm} km · ${Math.floor(p/60)}:${pad(Math.round(p%60))}/km`;
+  }
+  return `<div class="actual"><span class="eyebrow">Actual — Strava</span>
+    <div class="actual-name">${escapeHtml(a.name)}</div>
+    <div class="actual-meta">${meta}</div>
+    ${a.description?`<pre class="actual-desc">${escapeHtml(a.description)}</pre>`:`<p class="note" style="margin:0">No description on the activity.</p>`}</div>`;
+}
+function withActual(s,planHtml){
+  const act=actualHtml(s);
+  return act?`<div class="pva"><div>${planHtml}</div>${act}</div>`:planHtml;
+}
+
 function queueCardHtml(){
   if(!api||!stravaQueue.length)return "";
   let rows="";
@@ -453,7 +481,7 @@ function renderToday(root){
     ${rotPicker}
     <div class="card">
       <div class="card-head"><h3>${isToday?"Today's session":"Next session"}${cur.optional?' · <span style="color:var(--amber)">Deload — do not add plates</span>':""}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
-      ${rows}
+      ${withActual(cur,rows)}
     </div>
     <div class="readiness" id="readiness">
       <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
@@ -501,9 +529,9 @@ function renderTodayRun(root,cur){
     </div>
     <div class="card">
       <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel}</span></div>
-      <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
+      ${withActual(cur,`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
         <div class="lift-scheme">${escapeHtml(hint)}</div></div>
-        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>`)}
     </div>
     <div class="readiness" id="readiness">
       <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
@@ -580,13 +608,13 @@ function calDetailHtml(ss){
       const sport=Program.sportFor(state,s);
       const title=s.run.type==="test"?s.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
       return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${escapeHtml(title)}</h3><span class="meta">${dateLabel}</span></div>
-        <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div><div class="lift-scheme">low aerobic · flat terrain</div></div>
-        <div class="lift-val"><div class="kg run">${escapeHtml(Program.runLabel(s.run))}</div></div></div>${statusBtns}</div>`;
+        ${withActual(s,`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div><div class="lift-scheme">low aerobic · flat terrain</div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(Program.runLabel(s.run))}</div></div></div>`)}${statusBtns}</div>`;
     }
     const rot=rotatingLifts();const ch=chosenRotating(s);
     const rotPick=rot.length>1?`<div class="rotpick" style="padding:0 18px 4px"><span class="rotpick-label">Rotating slot</span><div class="seg">${rot.map(l=>`<button class="seg-btn" data-act="rot" data-date="${s.dateStr}" data-rot="${l.id}" aria-pressed="${ch&&ch.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>`:"";
     return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${Math.round(s.pct*100)}%${s.optional?' · <span style="color:var(--amber)">Deload</span>':""}</h3><span class="meta">${dateLabel} · ${s.sets}×${s.reps}</span></div>
-      ${liftRowsHtml(s)}${rotPick}${statusBtns}</div>`;
+      ${withActual(s,liftRowsHtml(s))}${rotPick}${statusBtns}</div>`;
   }).join("");
 }
 
