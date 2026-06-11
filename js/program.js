@@ -57,6 +57,7 @@ const Program = (() => {
 
   function template(state) { return TEMPLATES[state.template] || TEMPLATES.operator6; }
 
+  /* selectors return fresh copies — callers may mutate freely */
   function weekSpec(state, week) {
     const t = template(state);
     const raw = t.lift[(week - 1) % t.weeks];
@@ -68,8 +69,8 @@ const Program = (() => {
     const t = template(state);
     if (!t.endurance) return null;
     const ov = (state.enduranceOverrides || {})[week];
-    if (ov && ov[slot]) return ov[slot];
-    return t.endurance[(week - 1) % t.weeks][slot] || null;
+    const raw = (ov && ov[slot]) || t.endurance[(week - 1) % t.weeks][slot] || null;
+    return raw ? Object.assign({}, raw) : null;
   }
 
   function runLabel(spec) {
@@ -131,7 +132,9 @@ const Program = (() => {
       if (t.endurance) {
         (state.runDays || []).slice().sort((a, b) => a - b).forEach((dow, slot) => {
           const rs = runSpecAt(state, week, slot);
-          if (rs) out.push({ kind: "run", date: dateFor(dow), dateStr: ymd(dateFor(dow)), week, slot, run: rs });
+          if (!rs) return;
+          const date = dateFor(dow);
+          out.push({ kind: "run", date, dateStr: ymd(date), week, slot, run: rs });
         });
       }
     }

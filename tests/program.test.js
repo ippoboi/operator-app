@@ -237,3 +237,37 @@ test("operator6 emits no run sessions; sessions stay date-sorted", () => {
   const all = Program.buildSessions(c);
   for (let i = 1; i < all.length; i++) assert.ok(all[i - 1].date <= all[i].date);
 });
+
+test("runSpecAt returns copies — mutation never corrupts the book table", () => {
+  const s = capacityState();
+  // mutating the returned spec must not affect subsequent calls
+  const spec = Program.runSpecAt(s, 1, 0);
+  spec.lo = 999;
+  assert.equal(Program.runSpecAt(s, 1, 0).lo, 30);
+  // mutating a run session's .run must not affect a freshly built session list
+  const sessions = Program.buildSessions(s);
+  const runSess = sessions.find(x => x.kind === "run" && x.week === 1 && x.slot === 0);
+  runSess.run.lo = 999;
+  const fresh = Program.buildSessions(s).filter(x => x.kind === "run" && x.week === 1 && x.slot === 0);
+  assert.equal(fresh[0].run.lo, 30);
+});
+
+test("non-3 runDays: slots truncate to the table (documented behavior)", () => {
+  // 2 run days => slots 0 and 1 only => 12 weeks x 2 = 24 runs
+  const s2 = capacityState({ runDays: [2, 4] });
+  assert.equal(Program.buildSessions(s2).filter(x => x.kind === "run").length, 24);
+  // 4 run days => slot 3 is out-of-bounds on the 3-column table => silently dropped => 12 x 3 = 36
+  const s4 = capacityState({ runDays: [1, 2, 4, 6] });
+  assert.equal(Program.buildSessions(s4).filter(x => x.kind === "run").length, 36);
+});
+
+test("run sessions carry no lift fields", () => {
+  const s = capacityState();
+  const r = Program.buildSessions(s).find(x => x.kind === "run");
+  assert.ok(r, "expected at least one run session");
+  assert.equal(r.pct, undefined);
+  assert.equal(r.sets, undefined);
+  assert.equal(r.reps, undefined);
+  assert.ok(r.run !== undefined, "run field must exist");
+  assert.equal(typeof r.slot, "number");
+});
