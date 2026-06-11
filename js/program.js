@@ -221,6 +221,61 @@ const Program = (() => {
     return sessions.find(x => x.dateStr === t) || sessions.find(x => x.dateStr >= t) || sessions[sessions.length - 1] || null;
   }
 
+  /* ---- Google Calendar snapshot (pure; consumed by main/gcal.js diff) ---- */
+  function fmtKg(n) { return (Math.round(n * 10) / 10).toString(); }
+
+  function liftAbbrev(name) {
+    const words = String(name).trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return "?";
+    if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+    return words.map(w => w[0]).join("").toUpperCase();
+  }
+
+  /* [{key:"kind:dateStr", date, title, desc, start?, end?}] — all-day unless a
+     stored Strava activity upgrades a done session to its real timespan */
+  function calendarSnapshot(state) {
+    return buildSessions(state).map(s => {
+      const st = (state.status || {})[s.dateStr] || null;
+      const act = (state.activities || {})[s.dateStr] || null;
+      const prefix = st === "done" ? "✓ " : st === "skipped" ? "⨯ " : "";
+      let title, desc;
+      if (s.kind === "run") {
+        const sport = sportFor(state, s);
+        const lbl = runLabel(s.run);
+        if (s.run.type === "test") {
+          title = prefix + "⛰ " + s.run.name;
+          desc = "Week " + s.week + " · " + s.run.name + " — target under " + s.run.targetMin + ":00, flat course.";
+        } else {
+          title = prefix + (sport === "bike" ? "🚴 LSS " : "🏃 LSS ") + lbl;
+          desc = "Week " + s.week + " · LSS " + (sport === "bike" ? "Bike" : "Run") + " " + lbl + "\nLow aerobic range, flat terrain.";
+        }
+      } else {
+        const tg = sessionTargets(state, s);
+        const pl = Math.round(s.pct * 100);
+        const parts = tg.map(t => {
+          const ab = liftAbbrev(t.ref.name);
+          if (t.target == null) return ab + (t.bw ? " BW" : " —");
+          if (t.ref.type === "pullup" && t.added != null) return ab + " " + (t.added >= 0 ? "+" : "") + fmtKg(t.added);
+          return ab + " " + fmtKg(t.target);
+        });
+        title = prefix + "🏋 " + parts.join(" · ") + (s.optional ? " · Deload" : "");
+        const body = tg.map(t => {
+          if (t.target == null) return t.ref.name + ": " + (t.bw ? s.sets + "×" + s.reps + " bodyweight" : "set TM");
+          if (t.ref.type === "pullup") return t.ref.name + ": " + s.sets + "×" + s.reps + " @ " + fmtKg(t.target) + " kg" + (t.added != null ? " (" + (t.added >= 0 ? "+" : "") + fmtKg(t.added) + " added)" : "");
+          if (t.ref.type === "db") return t.ref.name + ": " + s.sets + "×" + s.reps + " @ " + fmtKg(t.target) + " kg/hand";
+          return t.ref.name + ": " + s.sets + "×" + s.reps + " @ " + fmtKg(t.target) + " kg";
+        }).join("\n");
+        desc = "Week " + s.week + " · " + pl + "% · " + s.sets + "×" + s.reps + (s.optional ? " · Deload — do not add plates" : "") + "\n\n" + body;
+      }
+      const ev = { key: s.kind + ":" + s.dateStr, date: s.dateStr, title, desc };
+      if (st === "done" && act && act.startISO && act.durationSec) {
+        ev.start = act.startISO;
+        ev.end = new Date(Date.parse(act.startISO) + act.durationSec * 1000).toISOString();
+      }
+      return ev;
+    });
+  }
+
   const STORAGE_KEY = "tb-operator-v2";
   const LEGACY_KEY = "tb-operator-v1";
 
@@ -243,6 +298,7 @@ const Program = (() => {
     targetFor, sessionTargets, currentSession,
     STORAGE_KEY, LEGACY_KEY, migrateV1,
     monthMatrix, parseRunSpec, runEditLabel,
+    calendarSnapshot, liftAbbrev,
   };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = Program;
