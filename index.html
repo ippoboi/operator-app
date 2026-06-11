@@ -178,6 +178,16 @@
   .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6}
 
   /* setup */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .tab{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 14px;cursor:pointer}
+  .tab:hover{color:var(--text)}
+  .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+  .end-row{display:grid;grid-template-columns:34px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px}
+  .end-row.end-head span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .end-row>span{font-size:12px;color:var(--muted)}
+  input.end-cell{width:100%;text-align:center;padding:7px 6px;font-size:13px}
+  input.end-cell.ov{border-color:var(--accent)}
+  input.end-cell:disabled{opacity:.55;border-style:dashed}
   .group{margin-bottom:30px}
   .group > .eyebrow{margin-bottom:12px;display:block}
   .field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
@@ -572,27 +582,41 @@ function wireChart(root){
   });
 }
 
+let setupTab="program";
 function renderSetup(root){
+  const hasEnd=!!Program.template(state).endurance;
+  if(setupTab==="endurance"&&!hasEnd)setupTab="program";
+  const tabs=[["program","Program"],["lifts","Lifts"],...(hasEnd?[["endurance","Endurance"]]:[]),["connections","Connections"],["general","General"]];
+  const tabRow=`<div class="tabs">${tabs.map(([k,l])=>`<button class="tab" data-stab="${k}" aria-selected="${setupTab===k}">${l}</button>`).join("")}</div>`;
   const dayBtns=[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.liftDays.includes(d)}">${DOW[d][0]}</button>`).join("");
   const liftRows=state.lifts.map(l=>`<div class="lift-cfg" data-id="${l.id}"><div class="toggle" role="switch" aria-checked="${l.enabled}" data-toggle></div><input type="text" value="${escapeAttr(l.name)}" data-name><button class="role-pill" data-role aria-pressed="${l.role==="rotating"}">${l.role==="rotating"?"Rotate":"Every"}</button><input type="number" class="tm" value="${l.tm==null?"":l.tm}" placeholder="TM" step="0.5" data-tm></div>`).join("");
   const stepRows=enabledLifts().map(l=>`<div class="field"><label>${escapeHtml(shortName(l.name))}</label><input type="number" value="${l.blockStep==null?"":l.blockStep}" step="0.5" data-step data-id="${l.id}"></div>`).join("");
   const rotL=rotatingLifts();
   const rotSchedHtml = rotL.length>1 ? `<div class="group"><span class="eyebrow">Rotation — which lift on each day</span>${state.liftDays.slice().sort((a,b)=>a-b).map(dow=>{const cur=rotForWeekday(dow);return `<div class="rot-day"><span class="rot-day-label">${DOW[dow]}</span><div class="seg">${rotL.map(l=>`<button class="seg-btn" data-rotday="${dow}" data-rotlift="${l.id}" aria-pressed="${cur&&cur.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>`;}).join("")}<p class="note">Set it once and it repeats identically every week — e.g. Mon Pull-up, Wed Deadlift, Fri Pull-up = 1× Deadlift, 2× Pull-up. Override a single day on the Today screen.</p></div>` : "";
-  root.innerHTML=`<div class="view-title">Setup</div><div class="sub">Enter your numbers once — every week is computed from them.</div>
-    <div class="group"><span class="eyebrow">Program</span>
-      <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
-      <div class="field"><label>Week 1 start <span class="hint">pick the Monday</span></label><input type="date" value="${state.startDate}" data-k="startDate"></div>
+  let body="";
+  if(setupTab==="program"){
+    body=`<div class="group"><span class="eyebrow">Program</span>
       <div class="field"><label>Template <span class="hint">lifting wave &amp; endurance</span></label>
         <select data-template>${Object.values(Program.TEMPLATES).map(t=>`<option value="${t.id}" ${state.template===t.id?"selected":""}>${t.label}</option>`).join("")}</select></div>
+      <div class="field"><label>Week 1 start <span class="hint">pick the Monday</span></label><input type="date" value="${state.startDate}" data-k="startDate"></div>
       <div class="field"><label>Length <span class="hint">weeks</span></label><input type="number" value="${state.weeks}" min="3" max="52" data-k="weeks"></div>
       <div class="field"><label>Plate increment <span class="hint">kg rounding</span></label><input type="number" value="${state.increment}" step="0.5" data-k="increment"></div>
-      <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
-    </div>
-    <div class="group"><span class="eyebrow">Lift days</span><div class="days" id="days">${dayBtns}</div></div>
-    ${Program.template(state).endurance?`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one). Edits to individual weeks come with the Endurance tab in the next release.</p></div>`:""}
+    </div>`;
+  }else if(setupTab==="lifts"){
+    body=`<div class="group"><span class="eyebrow">Lift days</span><div class="days" id="days">${dayBtns}</div></div>
     <div class="group"><span class="eyebrow">Cluster — toggle, rename, Every/Rotate, training max (kg)</span>${liftRows}<p class="note">“Every” lifts run every session. “Rotate” lifts share one slot — set the weekly pattern below.</p></div>
     ${rotSchedHtml}
-    <div class="group"><span class="eyebrow">Block step — kg added to each TM per block (every ${Program.template(state).tmStepEvery} weeks)</span>${stepRows}</div>
+    <div class="group"><span class="eyebrow">Block step — kg added to each TM per block (every ${Program.template(state).tmStepEvery} weeks)</span>${stepRows}</div>`;
+  }else if(setupTab==="endurance"){
+    body=`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one).</p></div>
+    ${enduranceEditorHtml()}`;
+  }else if(setupTab==="connections"){
+    body=`<div class="empty"><h3>Connections</h3><p>Google Calendar live sync and Strava import land in the next update.<br>The app stays fully usable offline either way.</p></div>`;
+  }else{
+    body=`<div class="group"><span class="eyebrow">General</span>
+      <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
+      <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
+    </div>
     <div class="group"><span class="eyebrow">Calendar</span>
       <div class="field"><label>Session time</label><input type="time" value="${state.sessionTime}" data-k="sessionTime"></div>
       <div class="field"><label>Duration <span class="hint">minutes</span></label><input type="number" value="${state.durationMin}" data-k="durationMin"></div>
@@ -604,6 +628,9 @@ function renderSetup(root){
         <input type="file" id="restoreFile" accept="application/json" hidden>
       </div>
     </div>`;
+  }
+  root.innerHTML=`<div class="view-title">Setup</div><div class="sub">Enter your numbers once — every week is computed from them.</div>${tabRow}${body}`;
+  root.querySelectorAll("[data-stab]").forEach(b=>b.onclick=()=>{setupTab=b.dataset.stab;renderSetup(root);});
   root.querySelectorAll("[data-k]").forEach(inp=>inp.addEventListener("change",()=>{
     const k=inp.dataset.k;let v=inp.value;
     if(["weeks","durationMin"].includes(k))v=parseInt(v,10)||state[k];
@@ -617,7 +644,8 @@ function renderSetup(root){
     if(!confirm(`Switch to ${tpl.label}? Done/skipped history is kept; the wave and schedule change.`)){renderSetup(root);return;}
     state.template=id;state.weeks=tpl.weeks;save();render();toast(tpl.label);
   });
-  root.querySelector("#days").addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.runDays&&state.runDays.includes(d)){toast("Already a run day");return;}const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
+  const ld=root.querySelector("#days");
+  if(ld)ld.addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.runDays&&state.runDays.includes(d)){toast("Already a run day");return;}const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
   const rd=root.querySelector("#runDays");
   if(rd)rd.addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.liftDays.includes(d)){toast("Already a lift day");return;}const i=state.runDays.indexOf(d);if(i>=0){if(state.runDays.length>1)state.runDays.splice(i,1);}else state.runDays.push(d);save();renderSetup(root);});
   root.querySelectorAll(".lift-cfg").forEach(row=>{const id=row.dataset.id;const lift=state.lifts.find(l=>l.id===id);
@@ -627,11 +655,46 @@ function renderSetup(root){
     row.querySelector("[data-tm]").addEventListener("change",e=>{lift.tm=e.target.value===""?null:parseFloat(e.target.value);save();});});
   root.querySelectorAll("[data-step]").forEach(inp=>inp.addEventListener("change",()=>{const lift=state.lifts.find(l=>l.id===inp.dataset.id);if(lift){lift.blockStep=inp.value===""?0:parseFloat(inp.value);save();}}));
   root.querySelectorAll("[data-rotday]").forEach(b=>b.onclick=()=>{state.rotSchedule[Number(b.dataset.rotday)]=b.dataset.rotlift;save();renderSetup(root);});
-  root.querySelector("#icsBtn2").onclick=exportICS;
-  root.querySelector("#backupBtn").onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
-  root.querySelector("#restoreBtn").onclick=()=>root.querySelector("#restoreFile").click();
-  root.querySelector("#restoreFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=Object.assign(defaults(),JSON.parse(r.result));save();render();toast("Restored");}catch(err){toast("Bad file");}};r.readAsText(f);};
-  root.querySelector("#resetBtn").onclick=()=>{if(confirm("Erase all settings and progress?")){state=defaults();save();render();toast("Reset");}};
+  const icsB=root.querySelector("#icsBtn2");
+  if(icsB)icsB.onclick=exportICS;
+  const bkB=root.querySelector("#backupBtn");
+  if(bkB)bkB.onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
+  const rsB=root.querySelector("#restoreBtn");
+  if(rsB)rsB.onclick=()=>root.querySelector("#restoreFile").click();
+  const rsF=root.querySelector("#restoreFile");
+  if(rsF)rsF.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=Object.assign(defaults(),JSON.parse(r.result));save();render();toast("Restored");}catch(err){toast("Bad file");}};r.readAsText(f);};
+  const rstB=root.querySelector("#resetBtn");
+  if(rstB)rstB.onclick=()=>{if(confirm("Erase all settings and progress?")){state=defaults();save();render();toast("Reset");}};
+  root.querySelectorAll(".end-cell").forEach(inp=>inp.addEventListener("change",()=>{
+    const w=+inp.dataset.w,slot=+inp.dataset.slot;
+    if(inp.value.trim()===""){
+      const ov=state.enduranceOverrides[w];
+      if(ov){delete ov[slot];if(!Object.keys(ov).length)delete state.enduranceOverrides[w];}
+      save();renderSetup(root);return;
+    }
+    const spec=Program.parseRunSpec(inp.value);
+    if(!spec){toast("Use 30, 30-60 or 120+");renderSetup(root);return;}
+    (state.enduranceOverrides[w]=state.enduranceOverrides[w]||{})[slot]=spec;
+    save();renderSetup(root);
+  }));
+  const rb=root.querySelector("#resetBook");
+  if(rb)rb.onclick=()=>{if(confirm("Discard all endurance edits and restore the book table?")){state.enduranceOverrides={};save();renderSetup(root);toast("Book values restored");}};
+}
+
+function enduranceEditorHtml(){
+  const t=Program.template(state);
+  let rows=`<div class="end-row end-head"><span>Wk</span><span>Run 1</span><span>Run 2</span><span>Run 3 (long)</span></div>`;
+  for(let w=1;w<=t.weeks;w++){
+    rows+=`<div class="end-row"><span class="mono">${pad(w)}</span>${[0,1,2].map(slot=>{
+      const spec=Program.runSpecAt(state,w,slot);
+      const isTest=spec&&spec.type==="test";
+      const isOv=!!((state.enduranceOverrides[w]||{})[slot]);
+      return `<input type="text" class="end-cell${isOv?" ov":""}" data-w="${w}" data-slot="${slot}" value="${escapeAttr(Program.runEditLabel(spec))}" ${isTest?"disabled":""}>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="group"><span class="eyebrow">Week-by-week minutes — book values unless edited</span>${rows}
+    <p class="note">Formats: <b>30</b> fixed · <b>30-60</b> range · <b>120+</b> open-ended. Accent border = edited; clear a cell to restore the book value. The 6-Mile Test isn't editable.</p>
+    <div class="setup-actions"><button class="btn" id="resetBook">Reset all to book</button></div></div>`;
 }
 
 /* ---- ics ---- */
