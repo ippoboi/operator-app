@@ -48,25 +48,43 @@ async function freshToken(provider) {
   return next.access_token;
 }
 
-let pendingSnapshot = null; // offline/expired pushes queue here and flush on retry
+/* Pushes are strictly serialized: concurrent runs once raced ensureCalendar and
+   created TWO "Operator" calendars (calendarId was only persisted after the slow
+   insert phase). queuedSnapshot holds the newest snapshot — waiting either
+   because a push is in flight or because the last one failed (retry timer). */
+let queuedSnapshot = null;
+let pushing = false;
 
 async function doPush(snapshot) {
-  const d = store.load();
-  if (!d.google.tokensEnc) return;
+  queuedSnapshot = snapshot;
+  if (pushing) return; // the active run picks it up after its current pass
+  pushing = true;
   try {
-    const token = await freshToken("google");
-    const res = await gcal.syncPlan(snapshot, { token, calendarId: d.google.calendarId, eventMap: d.google.eventMap });
-    store.update(s => {
-      s.google.calendarId = res.calendarId;
-      s.google.eventMap = res.eventMap;
-      s.google.lastSync = new Date().toISOString();
-      s.google.lastError = null;
-    });
-    pendingSnapshot = null;
-  } catch (e) {
-    pendingSnapshot = snapshot;
-    store.update(s => { s.google.lastError = String(e.message || e); });
-  }
+    while (queuedSnapshot) {
+      const snap = queuedSnapshot;
+      queuedSnapshot = null;
+      const d = store.load();
+      if (!d.google.tokensEnc) return;
+      try {
+        const token = await freshToken("google");
+        const res = await gcal.syncPlan(snap, {
+          token, calendarId: d.google.calendarId, eventMap: d.google.eventMap,
+          /* persist the calendar id the moment it's known, BEFORE the insert phase */
+          onCalendar: id => store.update(s => { s.google.calendarId = id; }),
+        });
+        store.update(s => {
+          s.google.calendarId = res.calendarId;
+          s.google.eventMap = res.eventMap;
+          s.google.lastSync = new Date().toISOString();
+          s.google.lastError = null;
+        });
+      } catch (e) {
+        if (queuedSnapshot == null) queuedSnapshot = snap; // keep newest for the retry timer
+        store.update(s => { s.google.lastError = String(e.message || e); });
+        return;
+      }
+    }
+  } finally { pushing = false; }
 }
 
 app.whenReady().then(() => {
@@ -97,7 +115,7 @@ app.whenReady().then(() => {
       s[provider].tokensEnc = null;
       if (provider === "google") { s.google.eventMap = {}; s.google.calendarId = null; }
     });
-    if (provider === "google") pendingSnapshot = null;
+    if (provider === "google") queuedSnapshot = null;
     return statusOf();
   });
 
@@ -119,7 +137,7 @@ app.whenReady().then(() => {
     }
   });
 
-  setInterval(() => { if (pendingSnapshot) doPush(pendingSnapshot); }, 60 * 1000);
+  setInterval(() => { if (queuedSnapshot && !pushing) doPush(queuedSnapshot); }, 60 * 1000);
 
   createWindow();
   app.on("activate", () => {

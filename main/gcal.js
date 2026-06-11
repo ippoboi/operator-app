@@ -77,6 +77,7 @@ async function listEventIds(token, calId) {
 /* deps: {token, calendarId, eventMap} -> {calendarId, eventMap} (caller persists) */
 async function syncPlan(snapshot, deps) {
   const calId = await ensureCalendar(deps.token, deps.calendarId);
+  if (deps.onCalendar) deps.onCalendar(calId); // let the caller persist it before the slow insert phase
   const liveIds = await listEventIds(deps.token, calId);
   const eventMap = {};
   /* drop entries whose event was deleted by hand — the diff re-inserts them (self-heal) */
