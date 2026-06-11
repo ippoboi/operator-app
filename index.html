@@ -283,8 +283,51 @@ function load(){
     return Program.defaults();
   }catch(e){return Program.defaults();}
 }
-function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){} schedulePush();}
 let state=load(); let activeTab="today";
+
+/* ---- sync (Electron only; window.api is absent under file://) ---- */
+const api=window.api||null;
+let syncStatus=null;   // last getSyncStatus() result
+let stravaQueue=[];    // review-queue items from the last fetch (in-memory; re-derived each sync)
+let pushT=null;
+function googleConnected(){return !!(syncStatus&&syncStatus.google&&syncStatus.google.connected);}
+function stravaConnected(){return !!(syncStatus&&syncStatus.strava&&syncStatus.strava.connected);}
+function schedulePush(){
+  if(!api||!googleConnected())return;
+  clearTimeout(pushT);
+  pushT=setTimeout(()=>{api.pushPlan(Program.calendarSnapshot(state)).then(st=>{syncStatus=st;}).catch(()=>{});},1200);
+}
+function planLite(){
+  return {
+    sessions:buildSessions().map(s=>({dateStr:s.dateStr,kind:s.kind,sport:Program.sportFor(state,s),
+      status:state.status[s.dateStr]||null,activityId:(state.activities[s.dateStr]||{}).id||null})),
+    dismissed:state.dismissedActivities,
+    today:ymd(todayDate()),
+    windowStart:ymd(addDays(todayDate(),-14)),
+  };
+}
+async function runStravaSync(quiet){
+  if(!api||!stravaConnected())return;
+  try{
+    const res=await api.syncStrava(planLite());
+    res.matches.forEach(m=>{state.status[m.dateStr]="done";state.activities[m.dateStr]=m.activity;});
+    stravaQueue=res.queue;
+    save();render();
+    if(!quiet)toast(res.matches.length?res.matches.length+" matched from Strava":"Up to date");
+  }catch(e){
+    if(!quiet)toast("Strava sync failed");
+    if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);
+    render();
+  }
+}
+if(api){
+  api.getSyncStatus().then(st=>{
+    syncStatus=st;render();
+    if(stravaConnected())runStravaSync(true);
+    if(googleConnected())schedulePush();
+  }).catch(()=>{});
+}
 let calYM=null;   // "YYYY-MM" being viewed; null = month of today
 let calSel=null;  // selected dateStr in the calendar
 function calMonth(){if(calYM){const p=calYM.split("-").map(Number);return{y:p[0],m:p[1]-1};}const t=todayDate();return{y:t.getFullYear(),m:t.getMonth()};}
