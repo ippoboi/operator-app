@@ -490,7 +490,6 @@ function renderToday(root){
     </div>
     <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
     <div class="actions">
-      <button class="btn primary" id="icsBtn">Add program to calendar</button>
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
       ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
@@ -498,7 +497,6 @@ function renderToday(root){
   const rp=root.querySelector("#rotpick");
   if(rp)rp.addEventListener("click",e=>{const b=e.target.closest("[data-rot]");if(!b)return;state.sessionPick[cur.dateStr]=b.dataset.rot;save();render();});
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
-  root.querySelector("#icsBtn").onclick=exportICS;
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
   const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
@@ -734,11 +732,8 @@ function renderSetup(root){
       <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
       <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
     </div>
-    <div class="group"><span class="eyebrow">Calendar</span>
-      <div class="field"><label>Session time</label><input type="time" value="${state.sessionTime}" data-k="sessionTime"></div>
-      <div class="field"><label>Duration <span class="hint">minutes</span></label><input type="number" value="${state.durationMin}" data-k="durationMin"></div>
+    <div class="group"><span class="eyebrow">Data</span>
       <div class="setup-actions">
-        <button class="btn primary" id="icsBtn2">Download .ics</button>
         <button class="btn" id="backupBtn">Back up data</button>
         <button class="btn" id="restoreBtn">Restore</button>
         <button class="btn ghost" id="resetBtn">Reset all</button>
@@ -750,7 +745,7 @@ function renderSetup(root){
   root.querySelectorAll("[data-stab]").forEach(b=>b.onclick=()=>{setupTab=b.dataset.stab;renderSetup(root);});
   root.querySelectorAll("[data-k]").forEach(inp=>inp.addEventListener("change",()=>{
     const k=inp.dataset.k;let v=inp.value;
-    if(["weeks","durationMin"].includes(k))v=parseInt(v,10)||state[k];
+    if(k==="weeks")v=parseInt(v,10)||state[k];
     else if(k==="increment")v=parseFloat(v)||state[k];
     else if(k==="bodyweight")v=v===""?null:parseFloat(v);
     state[k]=v;save();render();
@@ -772,8 +767,6 @@ function renderSetup(root){
     row.querySelector("[data-tm]").addEventListener("change",e=>{lift.tm=e.target.value===""?null:parseFloat(e.target.value);save();});});
   root.querySelectorAll("[data-step]").forEach(inp=>inp.addEventListener("change",()=>{const lift=state.lifts.find(l=>l.id===inp.dataset.id);if(lift){lift.blockStep=inp.value===""?0:parseFloat(inp.value);save();}}));
   root.querySelectorAll("[data-rotday]").forEach(b=>b.onclick=()=>{state.rotSchedule[Number(b.dataset.rotday)]=b.dataset.rotlift;save();renderSetup(root);});
-  const icsB=root.querySelector("#icsBtn2");
-  if(icsB)icsB.onclick=exportICS;
   const bkB=root.querySelector("#backupBtn");
   if(bkB)bkB.onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
   const rsB=root.querySelector("#restoreBtn");
@@ -866,32 +859,6 @@ function enduranceEditorHtml(){
     <p class="note">Formats: <b>30</b> fixed · <b>30-60</b> range · <b>120+</b> open-ended. Accent border = edited; clear a cell to restore the book value. The 6-Mile Test isn't editable.</p>
     <div class="setup-actions"><button class="btn" id="resetBook">Reset all to book</button></div></div>`;
 }
-
-/* ---- ics ---- */
-function escICS(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
-function stamp(d){return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+"T"+pad(d.getUTCHours())+pad(d.getUTCMinutes())+pad(d.getUTCSeconds())+"Z";}
-function buildICS(){
-  const sessions=buildSessions();const[hh,mm]=state.sessionTime.split(":").map(Number);
-  const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Operator//TB//EN","CALSCALE:GREGORIAN"];const now=new Date();
-  sessions.forEach(s=>{
-    const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
-    const f=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"T"+pad(d.getHours())+pad(d.getMinutes())+"00";
-    let summary,desc;
-    if(s.kind==="run"){
-      const sport=Program.sportFor(state,s)==="bike"?"LSS Bike":"LSS Run";
-      summary="Operator — "+sport+" "+Program.runLabel(s.run);
-      desc="Week "+s.week+" · "+sport+" "+Program.runLabel(s.run)+"\n\nLow aerobic range, flat terrain.";
-    }else{
-      const tg=sessionTargets(s);const pl=Math.round(s.pct*100);
-      const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
-      summary="Operator — Week "+s.week+" ("+pl+"%)"+(s.optional?" · Deload":"");
-      desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
-    }
-    lines.push("BEGIN:VEVENT","UID:operator-"+s.kind+"-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS(summary),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
-  });
-  lines.push("END:VCALENDAR");return lines.join("\r\n");
-}
-function exportICS(){if(!hasAnyTM()){toast("Set a training max first");activeTab="setup";render();return;}download("operator-program.ics",buildICS(),"text/calendar");toast("Calendar exported");}
 
 /* ---- utils ---- */
 function download(name,text,mime){const b=new Blob([text],{type:mime});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),800);}
