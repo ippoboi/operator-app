@@ -13,6 +13,7 @@
     --green:#5fb07a; --green-soft:rgba(95,176,122,.14);
     --red:#cf6f63; --red-soft:rgba(207,111,99,.14);
     --amber:#d6a441;
+    --teal:#5fd3c2;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --r:11px;
@@ -25,6 +26,7 @@
     --green:#3f8a52; --green-soft:rgba(63,138,82,.11);
     --red:#b6534a; --red-soft:rgba(182,83,74,.11);
     --amber:#a9791a;
+    --teal:#0e8a78;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -131,6 +133,26 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex-shrink:0}
   .dot.done{background:var(--green)} .dot.skipped{background:var(--red)} .dot.today{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 
+  /* calendar */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .cal-title{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.04em}
+  .cal-grid{display:grid;grid-template-columns:46px repeat(7,1fr);gap:4px;margin-bottom:4px}
+  .cal-dow span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);text-align:center;padding:2px 0}
+  .cal-gut{font-family:var(--mono);font-size:10px;color:var(--faint);align-self:center;text-align:right;padding-right:4px;white-space:nowrap}
+  .cal-cell{background:var(--surface);border:1px solid var(--line-soft);border-radius:8px;min-height:64px;padding:5px 6px;overflow:hidden}
+  .cal-cell.has{cursor:pointer}
+  .cal-cell.has:hover{border-color:var(--line);background:var(--surface-2)}
+  .cal-cell.out{opacity:.35}
+  .cal-cell.today{border-color:var(--accent)}
+  .cal-cell.sel{border-color:var(--accent);background:var(--accent-soft)}
+  .cal-num{font-family:var(--mono);font-size:10.5px;color:var(--muted);display:block;margin-bottom:3px}
+  .cal-cell.today .cal-num{color:var(--accent);font-weight:700}
+  .cal-chip{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;border-radius:4px;padding:1px 4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cal-chip.lift{background:var(--accent-soft);color:var(--accent)}
+  .cal-chip.run{background:rgba(95,211,194,.12);color:var(--teal)}
+  .cal-chip.gold{background:rgba(214,164,65,.12);color:var(--amber)}
+  .cal-chip .dot{width:5px;height:5px;flex-shrink:0}
+
   /* progress */
   .chart-head{display:flex;align-items:center;gap:8px;margin:22px 0 12px;flex-wrap:wrap}
   .chip{font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 11px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
@@ -156,6 +178,16 @@
   .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6}
 
   /* setup */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .tab{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 14px;cursor:pointer}
+  .tab:hover{color:var(--text)}
+  .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+  .end-row{display:grid;grid-template-columns:34px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px}
+  .end-row.end-head span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .end-row>span{font-size:12px;color:var(--muted)}
+  input.end-cell{width:100%;text-align:center;padding:7px 6px;font-size:13px}
+  input.end-cell.ov{border-color:var(--accent)}
+  input.end-cell:disabled{opacity:.55;border-style:dashed}
   .group{margin-bottom:30px}
   .group > .eyebrow{margin-bottom:12px;display:block}
   .field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
@@ -166,6 +198,9 @@
     font-family:var(--mono);font-size:14px;background:var(--inset);border:1px solid var(--line);
     color:var(--text);border-radius:8px;padding:9px 11px;width:130px;text-align:right}
   input:focus{outline:none;border-color:var(--accent)}
+  select{font-family:var(--mono);font-size:13px;background:var(--inset);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px 11px}
+  select:focus{outline:none;border-color:var(--accent)}
+  .kg.run{color:var(--teal)}
   .lift-cfg{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
   .lift-cfg:last-child{border-bottom:none}
   .lift-cfg input[type="text"]{flex:1;text-align:left;width:auto;min-width:0}
@@ -208,91 +243,52 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="js/program.js"></script>
 <script>
 "use strict";
 
-const CYCLE=[
-  {pct:0.70,sets:3,reps:5},
-  {pct:0.80,sets:3,reps:5},
-  {pct:0.90,sets:3,reps:3},
-  {pct:0.75,sets:3,reps:5,deload:true},
-  {pct:0.85,sets:3,reps:3},
-  {pct:0.95,sets:3,reps:1},
-];
 const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const KEY="tb-operator-v1";
+
 const ICONS={
   today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
-  program:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
+  calendar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
   progress:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="20"/><line x1="7" y1="20" x2="7" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="17" y1="20" x2="17" y2="15"/></svg>',
   setup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.3" fill="var(--side)"/><circle cx="15" cy="12" r="2.3" fill="var(--side)"/><circle cx="8" cy="17" r="2.3" fill="var(--side)"/></svg>',
 };
-
-function todayDate(){const d=new Date();d.setHours(0,0,0,0);return d;}
-function ymd(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
-function parseYMD(s){const p=s.split("-").map(Number);return new Date(p[0],p[1]-1,p[2]);}
-function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+const { todayDate, ymd, parseYMD, addDays, roundTo } = Program;
+const defaults = () => Program.defaults();
+const enabledLifts = () => Program.enabledLifts(state);
+const coreLifts = () => Program.coreLifts(state);
+const rotatingLifts = () => Program.rotatingLifts(state);
+const hasAnyTM = () => Program.hasAnyTM(state);
+const buildSessions = () => Program.buildSessions(state);
+const blockOf = (w) => Program.blockOf(state, w);
+const effectiveTM = (l, w) => Program.effectiveTM(state, l, w);
+const rotForWeekday = (d) => Program.rotForWeekday(state, d);
+const chosenRotating = (s) => Program.chosenRotating(state, s);
+const sessionLifts = (s) => Program.sessionLifts(state, s);
+const targetFor = (l, p, w) => Program.targetFor(state, l, p, w);
+const sessionTargets = (s) => Program.sessionTargets(state, s);
+const currentSession = (s) => Program.currentSession(state, s);
+const weekSpec = (w) => Program.weekSpec(state, w);
 function pad(n){return String(n).padStart(2,"0");}
-function roundTo(v,inc){inc=inc||2.5;return Math.round(v/inc)*inc;}
 function fmt(n){return (Math.round(n*10)/10).toString();}
 
-function defaults(){
-  const t=todayDate();
-  const monday = t.getDay()===0 ? addDays(t,1) : addDays(t,1-t.getDay());
-  return {theme:"dark",displayName:"Dimitar",startDate:ymd(monday),weeks:6,increment:2.5,bodyweight:null,
-    sessionTime:"17:30",durationMin:75,liftDays:[1,3,5],
-    lifts:[
-      {id:"fsq",name:"Front Squat",type:"barbell",enabled:true,tm:null,role:"core",blockStep:5},
-      {id:"sdl",name:"Sumo Deadlift",type:"barbell",enabled:true,tm:null,role:"rotating",blockStep:5},
-      {id:"wpu",name:"Weighted Pull-up",type:"pullup",enabled:true,tm:null,role:"rotating",blockStep:2.5},
-      {id:"dbb",name:"DB Bench Press",type:"db",enabled:true,tm:null,role:"core",blockStep:2.5},
-    ],status:{},readiness:{},sessionPick:{},rotSchedule:{1:"wpu",3:"sdl",5:"wpu"}};
+function load(){
+  try{
+    const r=localStorage.getItem(Program.STORAGE_KEY);
+    if(r)return Object.assign(Program.defaults(),JSON.parse(r));
+    const legacy=localStorage.getItem(Program.LEGACY_KEY);
+    if(legacy)return Program.migrateV1(JSON.parse(legacy));  // v1 left untouched as backup
+    return Program.defaults();
+  }catch(e){return Program.defaults();}
 }
+function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){}}
 let state=load(); let activeTab="today";
-function load(){try{const r=localStorage.getItem(KEY);if(!r)return defaults();return Object.assign(defaults(),JSON.parse(r));}catch(e){return defaults();}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
-function enabledLifts(){return state.lifts.filter(l=>l.enabled);}
-function coreLifts(){return enabledLifts().filter(l=>(l.role||"core")==="core");}
-function rotatingLifts(){return enabledLifts().filter(l=>l.role==="rotating");}
-function hasAnyTM(){return enabledLifts().some(l=>l.tm!=null&&!isNaN(l.tm));}
-
-function buildSessions(){
-  const start=parseYMD(state.startDate);const days=state.liftDays.slice().sort((a,b)=>a-b);const out=[];let idx=0;
-  for(let w=0;w<state.weeks;w++){
-    const ws=addDays(start,w*7);const cyc=CYCLE[w%CYCLE.length];const wsd=ws.getDay();
-    const dates=days.map(dow=>addDays(ws,(dow-wsd+7)%7)).sort((a,b)=>a-b);
-    dates.forEach(date=>out.push({date,dateStr:ymd(date),week:w+1,pct:cyc.pct,sets:cyc.sets,reps:cyc.reps,deload:!!cyc.deload,idx:idx++}));
-  }return out;
-}
-function blockOf(week){return Math.floor((week-1)/CYCLE.length);}      // 0 for wk1-6, 1 for wk7-12, ...
-function effectiveTM(lift,week){
-  if(lift.tm==null||isNaN(lift.tm))return null;
-  return lift.tm + (lift.blockStep||0)*blockOf(week);
-}
-function rotForWeekday(dow){
-  const rot=rotatingLifts();if(!rot.length)return null;
-  const bySched=rot.find(l=>l.id===state.rotSchedule[dow]);if(bySched)return bySched;
-  const days=state.liftDays.slice().sort((a,b)=>a-b);const pos=days.indexOf(dow);
-  return rot[(pos<0?0:pos)%rot.length];
-}
-function chosenRotating(session){
-  const rot=rotatingLifts();if(!rot.length)return null;
-  const picked=state.sessionPick[session.dateStr];
-  return rot.find(l=>l.id===picked) || rotForWeekday(session.date.getDay());
-}
-function sessionLifts(session){
-  const ch=chosenRotating(session);
-  return ch?[...coreLifts(),ch]:coreLifts();
-}
-function targetFor(lift,pct,week){
-  const tm=effectiveTM(lift,week);
-  if(tm==null)return{ref:lift,target:null,bw:lift.type==="pullup"};
-  const t=roundTo(pct*tm,state.increment);
-  let added=null;if(lift.type==="pullup"&&state.bodyweight)added=+(t-state.bodyweight).toFixed(1);
-  return{ref:lift,target:t,added,tm,projected:blockOf(week)>0};
-}
-function sessionTargets(session){return sessionLifts(session).map(l=>targetFor(l,session.pct,session.week));}
-function currentSession(s){const t=ymd(todayDate());return s.find(x=>x.dateStr===t)||s.find(x=>x.dateStr>=t)||s[s.length-1]||null;}
+let calYM=null;   // "YYYY-MM" being viewed; null = month of today
+let calSel=null;  // selected dateStr in the calendar
+function calMonth(){if(calYM){const p=calYM.split("-").map(Number);return{y:p[0],m:p[1]-1};}const t=todayDate();return{y:t.getFullYear(),m:t.getMonth()};}
+function shiftCalMonth(n){const c=calMonth();const d=new Date(c.y,c.m+n,1);calYM=d.getFullYear()+"-"+pad(d.getMonth()+1);calSel=null;render();}
 
 /* ---- render ---- */
 function el(h){const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;}
@@ -301,7 +297,7 @@ function escapeAttr(s){return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt
 function shortName(n){return n.replace("Front Squat","F.Squat").replace("Sumo Deadlift","Sumo DL").replace("Weighted Pull-up","Pull-up").replace("DB Bench Press","DB Bench");}
 
 function renderNav(){
-  const items=[["today","Today"],["program","Program"],["progress","Progress"]];
+  const items=[["today","Today"],["calendar","Calendar"],["progress","Progress"]];
   const nav=document.getElementById("nav");
   nav.innerHTML=`
     <div class="nav-group"><span class="nav-label">Train</span>
@@ -317,15 +313,32 @@ function render(){
   renderNav();
   const v=document.getElementById("view");
   if(activeTab==="today")renderToday(v);
-  else if(activeTab==="program")renderProgram(v);
+  else if(activeTab==="calendar"||activeTab==="program"){activeTab="calendar";renderCalendar(v);}
   else if(activeTab==="progress")renderProgress(v);
   else if(activeTab==="setup")renderSetup(v);
 }
 
+/* counts only status entries whose date still has a session — template switches can orphan keys */
+function statusCount(sessions,val){const live=new Set(sessions.map(s=>s.dateStr));return Object.entries(state.status).filter(([d,v])=>v===val&&live.has(d)).length;}
+
 function greeting(){const h=new Date().getHours();const p=h<12?"morning":h<18?"afternoon":"evening";return "Good "+p+(state.displayName?", "+state.displayName:"");}
+
+function liftRowsHtml(session){
+  const pct=Math.round(session.pct*100);
+  return sessionTargets(session).map(t=>{
+    let val,extra="";
+    if(t.target==null){if(t.bw){val=`<div class="kg" style="color:var(--text)">BW</div>`;extra=`<div class="added">bodyweight · ${session.sets}×${session.reps}</div>`;}else val=`<span class="row-flag">set TM</span>`;}
+    else if(t.ref.type==="pullup"){val=`<div class="kg">${fmt(t.target)}<small>kg</small></div>`;extra=t.added!=null?`<div class="added">+${fmt(t.added)} added · bw ${fmt(state.bodyweight)}</div>`:`<div class="added">total system load</div>`;}
+    else if(t.ref.type==="db"){val=`<div class="kg">${fmt(t.target)}<small>kg/hand</small></div>`;extra=`<div class="added">guide — round to your DBs</div>`;}
+    else val=`<div class="kg">${fmt(t.target)}<small>kg</small></div>`;
+    return `<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(t.ref.name)}</div>
+      <div class="lift-scheme">${session.sets}×${session.reps} @ ${pct}%</div></div><div class="lift-val">${val}${extra}</div></div>`;
+  }).join("");
+}
 
 function renderToday(root){
   const sessions=buildSessions();const cur=currentSession(sessions);
+  if(cur&&cur.kind==="run"){renderTodayRun(root,cur);return;}
   if(!hasAnyTM()||!cur){
     root.innerHTML=`<div class="greet">${escapeHtml(greeting())}</div>
       <div class="empty"><h3>No numbers yet</h3><p>Add your training maxes in Setup and today's targets land here.</p>
@@ -335,21 +348,12 @@ function renderToday(root){
   const isToday=cur.dateStr===ymd(todayDate());
   const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
   const pct=Math.round(cur.pct*100);
-  const tg=sessionTargets(cur);
-  const done=Object.values(state.status).filter(v=>v==="done").length;
+  const done=statusCount(sessions,"done");
   const lifts=sessionLifts(cur).map(l=>shortName(l.name)).join(", ");
   const rot=rotatingLifts();const ch=chosenRotating(cur);
   const rotPicker = rot.length>1 ? `<div class="rotpick" id="rotpick"><span class="rotpick-label">This session</span><div class="seg">${rot.map(l=>`<button class="seg-btn" data-rot="${l.id}" aria-pressed="${ch&&ch.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>` : "";
 
-  const rows=tg.map(t=>{
-    let val,extra="";
-    if(t.target==null){if(t.bw){val=`<div class="kg" style="color:var(--text)">BW</div>`;extra=`<div class="added">bodyweight · ${cur.sets}×${cur.reps}</div>`;}else val=`<span class="row-flag">set TM</span>`;}
-    else if(t.ref.type==="pullup"){val=`<div class="kg">${fmt(t.target)}<small>kg</small></div>`;extra=t.added!=null?`<div class="added">+${fmt(t.added)} added · bw ${fmt(state.bodyweight)}</div>`:`<div class="added">total system load</div>`;}
-    else if(t.ref.type==="db"){val=`<div class="kg">${fmt(t.target)}<small>kg/hand</small></div>`;extra=`<div class="added">guide — round to your DBs</div>`;}
-    else val=`<div class="kg">${fmt(t.target)}<small>kg</small></div>`;
-    return `<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(t.ref.name)}</div>
-      <div class="lift-scheme">${cur.sets}×${cur.reps} @ ${pct}%</div></div><div class="lift-val">${val}${extra}</div></div>`;
-  }).join("");
+  const rows=liftRowsHtml(cur);
 
   const r=state.readiness[cur.dateStr]||null;
   const nudges={green:`<b>Green.</b> Execute as planned.`,amber:`<b>Amber.</b> Hold the top end — stop sets with 1–2 in reserve.`,red:`<b>Red.</b> Cap it: top set only, or swap to easy / skip.`};
@@ -366,7 +370,7 @@ function renderToday(root){
     </div>
     ${rotPicker}
     <div class="card">
-      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
+      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}${cur.optional?' · <span style="color:var(--amber)">Deload — do not add plates</span>':""}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
       ${rows}
     </div>
     <div class="readiness" id="readiness">
@@ -388,44 +392,144 @@ function renderToday(root){
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
 }
 
-function renderProgram(root){
+function renderTodayRun(root,cur){
+  const isToday=cur.dateStr===ymd(todayDate());
+  const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
+  const sport=Program.sportFor(state,cur);
+  const st=state.status[cur.dateStr]||null;
+  const r=state.readiness[cur.dateStr]||null;
+  const done=statusCount(buildSessions(),"done");
+  const label=Program.runLabel(cur.run);
+  const title=cur.run.type==="test"?cur.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
+  const hint=cur.run.type==="test"?("Benchmark — target under "+cur.run.targetMin+":00, flat course.")
+    :cur.run.type==="fixed"?"Deload pace. Conversational, flat terrain — recharge, don't train."
+    :"Stay in the low aerobic range. Alternate easy/hard: long last time → go shorter today.";
+  const nudges={green:`<b>Green.</b> Run it as prescribed.`,amber:`<b>Amber.</b> Bottom of the range, easy pace.`,red:`<b>Red.</b> Shortest option, or swap to bike / skip.`};
+  root.innerHTML=`
+    <div class="greet">${escapeHtml(greeting())}</div>
+    <div class="sub">You're in <b>week ${cur.week}</b> of your block. ${isToday?"Today":"Next session ("+dateLabel+")"}: <b>${escapeHtml(title)} ${escapeHtml(label)}</b>.</div>
+    <div class="stats">
+      <div class="stat a"><div class="n mono">${pad(cur.week)}</div><div class="l">Current week</div></div>
+      <div class="stat am"><div class="n mono">${escapeHtml(label)}</div><div class="l">Prescribed</div></div>
+      <div class="stat g"><div class="n mono">${done}</div><div class="l">Sessions done</div></div>
+      <div class="stat"><div class="n mono">${d.getDate()} ${d.toLocaleString("en",{month:"short"})}</div><div class="l">${isToday?"Today":"Next up"}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel}</span></div>
+      <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
+        <div class="lift-scheme">${escapeHtml(hint)}</div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>
+    </div>
+    <div class="readiness" id="readiness">
+      <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
+      <button class="rb" data-r="amber" ${r==="amber"?'data-on="amber"':""}>Amber</button>
+      <button class="rb" data-r="red" ${r==="red"?'data-on="red"':""}>Red</button>
+    </div>
+    <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
+    <div class="actions">
+      <button class="btn" id="swapBtn">${sport==="bike"?"Back to run":"Swap to bike"}</button>
+      <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
+      <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
+    </div>`;
+  root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
+  root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
+  root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
+  root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+}
+
+function chipFor(s){
+  if(s.kind==="run"){
+    const sport=Program.sportFor(state,s);
+    if(s.run.type==="test")return{label:s.run.name,cls:"gold"};
+    return{label:(sport==="bike"?"Bike ":"LSS ")+Program.runLabel(s.run),cls:s.run.type==="fixed"?"gold":"run"};
+  }
+  if(s.optional)return{label:"Deload 40%",cls:"gold"};
+  const tg=sessionTargets(s).filter(t=>t.target!=null||t.bw);
+  const label=tg.length?tg.map(t=>shortName(t.ref.name).split(" ")[0]+" "+(t.bw?"BW":fmt(t.target))).join(" · "):Math.round(s.pct*100)+"% · set TMs";
+  return{label,cls:"lift"};
+}
+
+function renderCalendar(root){
   const sessions=buildSessions();
-  if(!sessions.length){root.innerHTML=`<div class="empty"><p>Set a start date in Setup.</p></div>`;return;}
-  const cur=currentSession(sessions);const curWeek=cur?cur.week:1;const tStr=ymd(todayDate());
-  const byWeek={};sessions.forEach(s=>{(byWeek[s.week]=byWeek[s.week]||[]).push(s);});
-  let html=`<div class="view-title">Program</div><div class="sub">${state.weeks} weeks · ${state.liftDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")} · 6-week peaking wave (70·80·90 / deload 75 / 85·95)</div>`;
-  Object.keys(byWeek).map(Number).sort((a,b)=>a-b).forEach(wk=>{
-    const ss=byWeek[wk];const c=ss[0];const isC=wk===curWeek;
-    if((wk-1)%CYCLE.length===0 && wk>1){
-      const blk=blockOf(wk)+1;
-      html+=`<div class="block-sep">Block ${blk} · projected — assumes the TM step-up after block ${blk-1}</div>`;
-    }
-    html+=`<div class="wk ${isC?"cur":""}"><div class="wk-head"><span class="wk-no">WK ${pad(wk)}</span><span class="wk-pct">${Math.round(c.pct*100)}%</span>${isC?'<span class="cur-badge">CURRENT</span>':""}${c.deload?'<span class="cur-badge" style="color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)">DELOAD</span>':""}<span class="wk-scheme">${c.sets}×${c.reps}</span></div>`;
-    ss.forEach(s=>{
-      const tg=sessionTargets(s).filter(t=>t.target!=null||t.bw);
-      const loads=tg.length?tg.map(t=>t.bw?shortName(t.ref.name)+" BW":shortName(t.ref.name)+" "+fmt(t.target)+(t.ref.type==="db"?"/h":"")).join("   ·   "):"set training maxes →";
-      const stt=state.status[s.dateStr]||"";const dotCls=s.dateStr===tStr?"today":stt;
-      html+=`<div class="sess" data-date="${s.dateStr}"><span class="dot ${dotCls}"></span><span class="sess-date mono">${DOW[s.date.getDay()]} ${s.date.getDate()} ${s.date.toLocaleString("en",{month:"short"})}</span><span class="sess-loads">${escapeHtml(loads)}</span></div>`;
-    });
-    html+=`</div>`;
+  const byDate={};sessions.forEach(s=>{(byDate[s.dateStr]=byDate[s.dateStr]||[]).push(s);});
+  const c=calMonth();const weeks=Program.monthMatrix(c.y,c.m);
+  const tStr=ymd(todayDate());
+  const monthName=new Date(c.y,c.m,1).toLocaleString("en",{month:"long",year:"numeric"});
+  const t=Program.template(state);
+  let grid=`<div class="cal-head"><button class="btn ghost" id="calPrev">‹ Prev</button><span class="cal-title">${monthName}</span><button class="btn ghost" id="calNext">Next ›</button></div>
+    <div class="cal-grid cal-dow"><span></span>${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<span>${d}</span>`).join("")}</div>`;
+  weeks.forEach(row=>{
+    const rowSess=row.map(d=>byDate[ymd(d)]||[]).flat();
+    const wk=rowSess.length?rowSess[0].week:null;
+    const sp=wk?weekSpec(wk):null;
+    const gut=wk?`W${wk}${sp?` · ${Math.round(sp.pct*100)}%`:""}`:"";
+    grid+=`<div class="cal-grid"><span class="cal-gut">${gut}</span>${row.map(d=>{
+      const ds=ymd(d);const ss=byDate[ds]||[];
+      const chips=ss.map(s=>{const ch=chipFor(s);const stt=state.status[s.dateStr];return `<span class="cal-chip ${ch.cls}">${stt?`<span class="dot ${stt}"></span>`:""}${escapeHtml(ch.label)}</span>`;}).join("");
+      const cls=["cal-cell",d.getMonth()!==c.m?"out":"",ds===tStr?"today":"",ds===calSel?"sel":"",ss.length?"has":""].filter(Boolean).join(" ");
+      return `<div class="${cls}" data-date="${ds}"><span class="cal-num">${d.getDate()}</span>${chips}</div>`;
+    }).join("")}</div>`;
   });
-  root.innerHTML=html;
-  root.querySelectorAll(".sess").forEach(row=>row.onclick=()=>{const dd=row.dataset.date;const c=state.status[dd];state.status[dd]=c==null?"done":c==="done"?"skipped":undefined;save();renderProgram(root);});
+  const detail=(calSel&&byDate[calSel])?calDetailHtml(byDate[calSel]):`<p class="note">Click a session day for details.</p>`;
+  root.innerHTML=`<div class="view-title">Calendar</div><div class="sub">${state.weeks} weeks · ${t.label}${t.endurance?` · runs ${state.runDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")}`:""}</div>${grid}<div id="calDetail" style="margin-top:18px">${detail}</div>`;
+  root.querySelector("#calPrev").onclick=()=>shiftCalMonth(-1);
+  root.querySelector("#calNext").onclick=()=>shiftCalMonth(1);
+  root.querySelectorAll(".cal-cell.has").forEach(cell=>cell.onclick=()=>{calSel=calSel===cell.dataset.date?null:cell.dataset.date;render();});
+  wireCalDetail(root);
+}
+
+function calDetailHtml(ss){
+  return ss.map(s=>{
+    const dateLabel=DOW[s.date.getDay()]+" "+s.date.getDate()+" "+s.date.toLocaleString("en",{month:"short"});
+    const st=state.status[s.dateStr]||null;
+    const statusBtns=`<div class="actions" style="padding:14px 18px">
+      <button class="btn" data-act="done" data-date="${s.dateStr}" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
+      <button class="btn ghost" data-act="skip" data-date="${s.dateStr}" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
+      ${s.kind==="run"?`<button class="btn" data-act="swap" data-date="${s.dateStr}">${Program.sportFor(state,s)==="bike"?"Back to run":"Swap to bike"}</button>`:""}
+    </div>`;
+    if(s.kind==="run"){
+      const sport=Program.sportFor(state,s);
+      const title=s.run.type==="test"?s.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
+      return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${escapeHtml(title)}</h3><span class="meta">${dateLabel}</span></div>
+        <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div><div class="lift-scheme">low aerobic · flat terrain</div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(Program.runLabel(s.run))}</div></div></div>${statusBtns}</div>`;
+    }
+    const rot=rotatingLifts();const ch=chosenRotating(s);
+    const rotPick=rot.length>1?`<div class="rotpick" style="padding:0 18px 4px"><span class="rotpick-label">Rotating slot</span><div class="seg">${rot.map(l=>`<button class="seg-btn" data-act="rot" data-date="${s.dateStr}" data-rot="${l.id}" aria-pressed="${ch&&ch.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>`:"";
+    return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${Math.round(s.pct*100)}%${s.optional?' · <span style="color:var(--amber)">Deload</span>':""}</h3><span class="meta">${dateLabel} · ${s.sets}×${s.reps}</span></div>
+      ${liftRowsHtml(s)}${rotPick}${statusBtns}</div>`;
+  }).join("");
+}
+
+function wireCalDetail(root){
+  root.querySelectorAll("#calDetail [data-act]").forEach(b=>b.onclick=()=>{
+    const d=b.dataset.date;const act=b.dataset.act;
+    if(act==="done")state.status[d]=state.status[d]==="done"?undefined:"done";
+    else if(act==="skip")state.status[d]=state.status[d]==="skipped"?undefined:"skipped";
+    else if(act==="swap"){if(state.sessionSwap[d]==="bike")delete state.sessionSwap[d];else state.sessionSwap[d]="bike";}
+    else if(act==="rot")state.sessionPick[d]=b.dataset.rot;
+    save();render();
+  });
 }
 
 function renderProgress(root){
   const sessions=buildSessions();const total=sessions.length;
-  const done=Object.values(state.status).filter(v=>v==="done").length;
-  const skipped=Object.values(state.status).filter(v=>v==="skipped").length;
+  const done=statusCount(sessions,"done");
+  const skipped=statusCount(sessions,"skipped");
   const pctDone=total?Math.round(done/total*100):0;
   const lifts=enabledLifts();
   if(!window.__pLift||!lifts.find(l=>l.id===window.__pLift))window.__pLift=((lifts.find(l=>l.tm!=null&&!isNaN(l.tm))||lifts[0])||{}).id||null;
   let chart=`<div class="empty"><p>Add a training max in Setup to chart the wave.</p></div>`;
   if(window.__pLift){const lift=lifts.find(l=>l.id===window.__pLift);
-    if(lift&&lift.tm!=null&&!isNaN(lift.tm)){const pts=[];for(let w=1;w<=state.weeks;w++)pts.push({w,v:roundTo(CYCLE[(w-1)%CYCLE.length].pct*effectiveTM(lift,w),state.increment)});chart=svgChart(pts);}
+    if(lift&&lift.tm!=null&&!isNaN(lift.tm)){const pts=[];for(let w=1;w<=state.weeks;w++){const sp=weekSpec(w);if(sp)pts.push({w,v:roundTo(sp.pct*effectiveTM(lift,w),state.increment)});}
+chart=svgChart(pts,Program.template(state).weeks);}
     else if(lift){chart=`<div class="empty"><h3>${escapeHtml(shortName(lift.name))} — bodyweight</h3><p>No loaded progression to chart yet. Add a training max once you start adding weight (a belt).</p></div>`;}
   }
   const chips=lifts.map(l=>`<button class="chip" data-lift="${l.id}" aria-pressed="${l.id===window.__pLift}">${escapeHtml(shortName(l.name))}</button>`).join("");
+  const tpl=Program.template(state);
+  const noteTxt=tpl.id==="capacity12"
+    ?`Capacity runs 4-week blocks (70·80·90 / 40% deload); week 12 is a taper with no lifting. The TM steps every 4 weeks — +5 kg lower-body, +2.5 kg upper — so weeks 5+ <b>project</b> those step-ups.`
+    :`Weeks 1–6 are one block (70·80·90 / 75 deload / 85·95). Beyond week 6 the chart <b>projects</b> the next blocks assuming each lift's TM steps up — +5 kg on lower-body lifts, +2.5 kg on upper — set per lift in Setup.`;
   root.innerHTML=`<div class="view-title">Progress</div><div class="sub">Tracking across your ${state.weeks}-week block.</div>
     <div class="stats">
       <div class="stat g"><div class="n mono">${done}</div><div class="l">Sessions done</div></div>
@@ -436,12 +540,12 @@ function renderProgress(root){
     <div class="chart-head"><span class="eyebrow">Prescribed top set across weeks</span><span class="legend"><span class="lg lg-solid"></span>current<span class="lg lg-dash"></span>projected</span></div>
     <div class="chart-head">${chips}</div>
     <div class="chartbox">${chart}</div>
-    <p class="note">Weeks 1–6 are one block (70·80·90 / 75 deload / 85·95). Beyond week 6 the chart <b>projects</b> the next blocks assuming each lift's TM steps up — +5 kg on lower-body lifts, +2.5 kg on upper — set per lift in Setup.</p>`;
+    <p class="note">${noteTxt}</p>`;
   root.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{window.__pLift=c.dataset.lift;renderProgress(root);});
   wireChart(root);
 }
 
-function svgChart(pts){
+function svgChart(pts,blkWeeks){
   const W=720,H=230,padL=44,padR=16,padT=16,padB=28;
   const xs=pts.map(p=>p.w),ys=pts.map(p=>p.v);
   const minY=Math.min.apply(null,ys),maxY=Math.max.apply(null,ys);
@@ -450,7 +554,7 @@ function svgChart(pts){
   const Y=v=>padT+(1-(v-lo)/Math.max(1,hi-lo))*(H-padT-padB);
   let grid="",ticks="";
   for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,y=Y(v);grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;ticks+=`<text x="${padL-9}" y="${(y+4).toFixed(1)}" text-anchor="end" fill="var(--faint)" font-size="11" font-family="var(--mono)">${Math.round(v)}</text>`;}
-  const BLK=CYCLE.length;
+  const BLK=blkWeeks||6;
   const mk=arr=>arr.map((p,i)=>(i?"L":"M")+X(p.w).toFixed(1)+" "+Y(p.v).toFixed(1)).join(" ");
   const solidPts=pts.filter(p=>p.w<=BLK),dashPts=pts.filter(p=>p.w>=BLK);
   const solidPath=solidPts.length>1?`<path d="${mk(solidPts)}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`:"";
@@ -478,24 +582,41 @@ function wireChart(root){
   });
 }
 
+let setupTab="program";
 function renderSetup(root){
+  const hasEnd=!!Program.template(state).endurance;
+  if(setupTab==="endurance"&&!hasEnd)setupTab="program";
+  const tabs=[["program","Program"],["lifts","Lifts"],...(hasEnd?[["endurance","Endurance"]]:[]),["connections","Connections"],["general","General"]];
+  const tabRow=`<div class="tabs">${tabs.map(([k,l])=>`<button class="tab" data-stab="${k}" aria-selected="${setupTab===k}">${l}</button>`).join("")}</div>`;
   const dayBtns=[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.liftDays.includes(d)}">${DOW[d][0]}</button>`).join("");
   const liftRows=state.lifts.map(l=>`<div class="lift-cfg" data-id="${l.id}"><div class="toggle" role="switch" aria-checked="${l.enabled}" data-toggle></div><input type="text" value="${escapeAttr(l.name)}" data-name><button class="role-pill" data-role aria-pressed="${l.role==="rotating"}">${l.role==="rotating"?"Rotate":"Every"}</button><input type="number" class="tm" value="${l.tm==null?"":l.tm}" placeholder="TM" step="0.5" data-tm></div>`).join("");
   const stepRows=enabledLifts().map(l=>`<div class="field"><label>${escapeHtml(shortName(l.name))}</label><input type="number" value="${l.blockStep==null?"":l.blockStep}" step="0.5" data-step data-id="${l.id}"></div>`).join("");
   const rotL=rotatingLifts();
   const rotSchedHtml = rotL.length>1 ? `<div class="group"><span class="eyebrow">Rotation — which lift on each day</span>${state.liftDays.slice().sort((a,b)=>a-b).map(dow=>{const cur=rotForWeekday(dow);return `<div class="rot-day"><span class="rot-day-label">${DOW[dow]}</span><div class="seg">${rotL.map(l=>`<button class="seg-btn" data-rotday="${dow}" data-rotlift="${l.id}" aria-pressed="${cur&&cur.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>`;}).join("")}<p class="note">Set it once and it repeats identically every week — e.g. Mon Pull-up, Wed Deadlift, Fri Pull-up = 1× Deadlift, 2× Pull-up. Override a single day on the Today screen.</p></div>` : "";
-  root.innerHTML=`<div class="view-title">Setup</div><div class="sub">Enter your numbers once — every week is computed from them.</div>
-    <div class="group"><span class="eyebrow">Program</span>
-      <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
+  let body="";
+  if(setupTab==="program"){
+    body=`<div class="group"><span class="eyebrow">Program</span>
+      <div class="field"><label>Template <span class="hint">lifting wave &amp; endurance</span></label>
+        <select data-template>${Object.values(Program.TEMPLATES).map(t=>`<option value="${t.id}" ${state.template===t.id?"selected":""}>${t.label}</option>`).join("")}</select></div>
       <div class="field"><label>Week 1 start <span class="hint">pick the Monday</span></label><input type="date" value="${state.startDate}" data-k="startDate"></div>
       <div class="field"><label>Length <span class="hint">weeks</span></label><input type="number" value="${state.weeks}" min="3" max="52" data-k="weeks"></div>
       <div class="field"><label>Plate increment <span class="hint">kg rounding</span></label><input type="number" value="${state.increment}" step="0.5" data-k="increment"></div>
-      <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
-    </div>
-    <div class="group"><span class="eyebrow">Lift days</span><div class="days" id="days">${dayBtns}</div></div>
+    </div>`;
+  }else if(setupTab==="lifts"){
+    body=`<div class="group"><span class="eyebrow">Lift days</span><div class="days" id="days">${dayBtns}</div></div>
     <div class="group"><span class="eyebrow">Cluster — toggle, rename, Every/Rotate, training max (kg)</span>${liftRows}<p class="note">“Every” lifts run every session. “Rotate” lifts share one slot — set the weekly pattern below.</p></div>
     ${rotSchedHtml}
-    <div class="group"><span class="eyebrow">Block step — kg added to each TM every 6-week block</span>${stepRows}</div>
+    <div class="group"><span class="eyebrow">Block step — kg added to each TM per block (every ${Program.template(state).tmStepEvery} weeks)</span>${stepRows}</div>`;
+  }else if(setupTab==="endurance"){
+    body=`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one).</p></div>
+    ${enduranceEditorHtml()}`;
+  }else if(setupTab==="connections"){
+    body=`<div class="empty"><h3>Connections</h3><p>Google Calendar live sync and Strava import land in the next update.<br>The app stays fully usable offline either way.</p></div>`;
+  }else{
+    body=`<div class="group"><span class="eyebrow">General</span>
+      <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
+      <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
+    </div>
     <div class="group"><span class="eyebrow">Calendar</span>
       <div class="field"><label>Session time</label><input type="time" value="${state.sessionTime}" data-k="sessionTime"></div>
       <div class="field"><label>Duration <span class="hint">minutes</span></label><input type="number" value="${state.durationMin}" data-k="durationMin"></div>
@@ -507,6 +628,9 @@ function renderSetup(root){
         <input type="file" id="restoreFile" accept="application/json" hidden>
       </div>
     </div>`;
+  }
+  root.innerHTML=`<div class="view-title">Setup</div><div class="sub">Enter your numbers once — every week is computed from them.</div>${tabRow}${body}`;
+  root.querySelectorAll("[data-stab]").forEach(b=>b.onclick=()=>{setupTab=b.dataset.stab;renderSetup(root);});
   root.querySelectorAll("[data-k]").forEach(inp=>inp.addEventListener("change",()=>{
     const k=inp.dataset.k;let v=inp.value;
     if(["weeks","durationMin"].includes(k))v=parseInt(v,10)||state[k];
@@ -514,7 +638,16 @@ function renderSetup(root){
     else if(k==="bodyweight")v=v===""?null:parseFloat(v);
     state[k]=v;save();render();
   }));
-  root.querySelector("#days").addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
+  const tplSel=root.querySelector("[data-template]");
+  if(tplSel)tplSel.addEventListener("change",()=>{
+    const id=tplSel.value;const tpl=Program.TEMPLATES[id];
+    if(!confirm(`Switch to ${tpl.label}? Done/skipped history is kept; the wave and schedule change.`)){renderSetup(root);return;}
+    state.template=id;state.weeks=tpl.weeks;save();render();toast(tpl.label);
+  });
+  const ld=root.querySelector("#days");
+  if(ld)ld.addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.runDays&&state.runDays.includes(d)){toast("Already a run day");return;}const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
+  const rd=root.querySelector("#runDays");
+  if(rd)rd.addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.liftDays.includes(d)){toast("Already a lift day");return;}const i=state.runDays.indexOf(d);if(i>=0){if(state.runDays.length>1)state.runDays.splice(i,1);}else state.runDays.push(d);save();renderSetup(root);});
   root.querySelectorAll(".lift-cfg").forEach(row=>{const id=row.dataset.id;const lift=state.lifts.find(l=>l.id===id);
     row.querySelector("[data-toggle]").onclick=()=>{lift.enabled=!lift.enabled;save();renderSetup(root);};
     row.querySelector("[data-role]").onclick=()=>{lift.role=(lift.role==="rotating")?"core":"rotating";save();renderSetup(root);};
@@ -522,11 +655,46 @@ function renderSetup(root){
     row.querySelector("[data-tm]").addEventListener("change",e=>{lift.tm=e.target.value===""?null:parseFloat(e.target.value);save();});});
   root.querySelectorAll("[data-step]").forEach(inp=>inp.addEventListener("change",()=>{const lift=state.lifts.find(l=>l.id===inp.dataset.id);if(lift){lift.blockStep=inp.value===""?0:parseFloat(inp.value);save();}}));
   root.querySelectorAll("[data-rotday]").forEach(b=>b.onclick=()=>{state.rotSchedule[Number(b.dataset.rotday)]=b.dataset.rotlift;save();renderSetup(root);});
-  root.querySelector("#icsBtn2").onclick=exportICS;
-  root.querySelector("#backupBtn").onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
-  root.querySelector("#restoreBtn").onclick=()=>root.querySelector("#restoreFile").click();
-  root.querySelector("#restoreFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=Object.assign(defaults(),JSON.parse(r.result));save();render();toast("Restored");}catch(err){toast("Bad file");}};r.readAsText(f);};
-  root.querySelector("#resetBtn").onclick=()=>{if(confirm("Erase all settings and progress?")){state=defaults();save();render();toast("Reset");}};
+  const icsB=root.querySelector("#icsBtn2");
+  if(icsB)icsB.onclick=exportICS;
+  const bkB=root.querySelector("#backupBtn");
+  if(bkB)bkB.onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
+  const rsB=root.querySelector("#restoreBtn");
+  if(rsB)rsB.onclick=()=>root.querySelector("#restoreFile").click();
+  const rsF=root.querySelector("#restoreFile");
+  if(rsF)rsF.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=Object.assign(defaults(),JSON.parse(r.result));save();render();toast("Restored");}catch(err){toast("Bad file");}};r.readAsText(f);};
+  const rstB=root.querySelector("#resetBtn");
+  if(rstB)rstB.onclick=()=>{if(confirm("Erase all settings and progress?")){state=defaults();save();render();toast("Reset");}};
+  root.querySelectorAll(".end-cell").forEach(inp=>inp.addEventListener("change",()=>{
+    const w=+inp.dataset.w,slot=+inp.dataset.slot;
+    if(inp.value.trim()===""){
+      const ov=state.enduranceOverrides[w];
+      if(ov){delete ov[slot];if(!Object.keys(ov).length)delete state.enduranceOverrides[w];}
+      save();renderSetup(root);return;
+    }
+    const spec=Program.parseRunSpec(inp.value);
+    if(!spec){toast("Use 30, 30-60 or 120+");renderSetup(root);return;}
+    (state.enduranceOverrides[w]=state.enduranceOverrides[w]||{})[slot]=spec;
+    save();renderSetup(root);
+  }));
+  const rb=root.querySelector("#resetBook");
+  if(rb)rb.onclick=()=>{if(confirm("Discard all endurance edits and restore the book table?")){state.enduranceOverrides={};save();renderSetup(root);toast("Book values restored");}};
+}
+
+function enduranceEditorHtml(){
+  const t=Program.template(state);
+  let rows=`<div class="end-row end-head"><span>Wk</span><span>Run 1</span><span>Run 2</span><span>Run 3 (long)</span></div>`;
+  for(let w=1;w<=t.weeks;w++){
+    rows+=`<div class="end-row"><span class="mono">${pad(w)}</span>${[0,1,2].map(slot=>{
+      const spec=Program.runSpecAt(state,w,slot);
+      const isTest=spec&&spec.type==="test";
+      const isOv=!!((state.enduranceOverrides[w]||{})[slot]);
+      return `<input type="text" class="end-cell${isOv?" ov":""}" data-w="${w}" data-slot="${slot}" value="${escapeAttr(Program.runEditLabel(spec))}" ${isTest?"disabled":""}>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="group"><span class="eyebrow">Week-by-week minutes — book values unless edited</span>${rows}
+    <p class="note">Formats: <b>30</b> fixed · <b>30-60</b> range · <b>120+</b> open-ended. Accent border = edited; clear a cell to restore the book value. The 6-Mile Test isn't editable.</p>
+    <div class="setup-actions"><button class="btn" id="resetBook">Reset all to book</button></div></div>`;
 }
 
 /* ---- ics ---- */
@@ -536,12 +704,20 @@ function buildICS(){
   const sessions=buildSessions();const[hh,mm]=state.sessionTime.split(":").map(Number);
   const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Operator//TB//EN","CALSCALE:GREGORIAN"];const now=new Date();
   sessions.forEach(s=>{
-    const tg=sessionTargets(s);const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
+    const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
     const f=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"T"+pad(d.getHours())+pad(d.getMinutes())+"00";
-    const pl=Math.round(s.pct*100);
-    const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
-    const desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
-    lines.push("BEGIN:VEVENT","UID:operator-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS("Operator — Week "+s.week+" ("+pl+"%)"),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
+    let summary,desc;
+    if(s.kind==="run"){
+      const sport=Program.sportFor(state,s)==="bike"?"LSS Bike":"LSS Run";
+      summary="Operator — "+sport+" "+Program.runLabel(s.run);
+      desc="Week "+s.week+" · "+sport+" "+Program.runLabel(s.run)+"\n\nLow aerobic range, flat terrain.";
+    }else{
+      const tg=sessionTargets(s);const pl=Math.round(s.pct*100);
+      const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
+      summary="Operator — Week "+s.week+" ("+pl+"%)"+(s.optional?" · Deload":"");
+      desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
+    }
+    lines.push("BEGIN:VEVENT","UID:operator-"+s.kind+"-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS(summary),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
   });
   lines.push("END:VCALENDAR");return lines.join("\r\n");
 }

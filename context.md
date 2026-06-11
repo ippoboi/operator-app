@@ -27,6 +27,10 @@ It ships two ways from one codebase: a self-contained `index.html` (open in any 
 | 5    | 85%     | 3×3            |
 | 6    | 95%     | 3×1            |
 
+### Capacity (Green Protocol) — second template
+
+Selectable in Setup. 12 weeks combining the lifting above with LSS running: lifting weeks 1–3/5–7/9–11 at 70/80/90% (3×5 / 3×5 / 3×3); weeks 4 & 8 are **optional deloads at 40% TM, 2×5** ("do not add plates"); week 12 has **no lifting** — a taper of 30′ runs ending in the **6-Mile Test** (< 60:00). The TM steps every **4** weeks instead of 6. Runs land on `runDays` (default Tue/Thu/Sat) per the book table (30–60′ → 60–90′ → 60–120′/120′+, deload weeks 3×30′), editable per week as sparse overrides, and any run day can be swapped to **bike** with one tap (`sessionSwap`).
+
 Core rules baked into the logic:
 
 - **Training Max (TM)** is the anchor (≈ 90% of estimated 1RM). All weights are `round(pct × TM, increment)`. The user is expected to _not_ test a true 1RM — instead set a comfortable week-1 weight as the 70% and back-calculate (`TM = weight ÷ 0.70`).
@@ -49,7 +53,7 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
 
 ## Architecture
 
-- **`index.html`** — the entire app: markup, CSS, and logic in one file, plain `<script>`, no framework, no build step. Charts are hand-drawn SVG. Persistence is `localStorage` (key `tb-operator-v1`). Works opened directly via `file://`.
+- **`index.html`** — markup, CSS, and UI logic; pure program math lives in **`js/program.js`** (loaded via plain `<script>`, also `require()`-able by `node --test` — see `tests/`). No framework, no build step. Charts are hand-drawn SVG. Persistence is `localStorage` (key `tb-operator-v2`; v1 auto-migrates on first load, the old key is left as a backup). Works opened directly via `file://`.
 - **`main.js`** — Electron main process; opens `index.html` in a `BrowserWindow` (hidden-inset title bar, inset traffic lights on macOS).
 - **`package.json`** — npm scripts (`start`, `dist`) and the electron-builder config (mac `.dmg` / win `.exe` / linux AppImage; `mac.identity: null` so unsigned personal builds succeed).
 - **`build/`** — generated app icons (`icon.icns`, `icon.ico`, `icon.png`).
@@ -60,6 +64,12 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
 ```js
 {
   theme: "dark" | "light",
+  template: "operator6" | "capacity12",
+  runDays: number[],              // LSS days (Capacity), 0=Sun .. 6=Sat (default [2,4,6]); kept disjoint from liftDays
+  enduranceOverrides: { [week]: { [slot]: runSpec } },  // sparse edits over the book table
+  sessionSwap: { [dateStr]: "bike" },  // run→bike swap per date
+  activities: {},                 // reserved: Strava activity per date (next plan)
+  dismissedActivities: [],        // reserved: Strava ids marked "not training"
   displayName: string,
   startDate: "YYYY-MM-DD",        // week-1 Monday
   weeks: number,                  // program length; the 6-week block repeats
@@ -89,20 +99,19 @@ Sessions are derived (never stored): `buildSessions()` walks `weeks` from `start
 
 ## Design language
 
-Lean, instrument-panel minimalism. Near-black charcoal (`#0b0c0e`), off-white text, a single periwinkle-blue accent (`#6b8afd`); green/red used only for done/skipped status. Sidebar navigation (Today / Program / Progress / Setup), monospace tabular numerals for all weights (the weight is the hero), system fonts only (offline-safe), generous whitespace, dark/light toggle. No marketing chrome.
+Lean, instrument-panel minimalism. Near-black charcoal (`#0b0c0e`), off-white text, a periwinkle-blue accent (`#6b8afd`) plus teal for endurance and amber for deload/test; green/red used only for done/skipped status. Sidebar navigation (Today / Calendar / Progress / Setup — Calendar is a month grid with session chips and an inline detail panel; Setup is split into inline tabs), monospace tabular numerals for all weights (the weight is the hero), system fonts only (offline-safe), generous whitespace, dark/light toggle. No marketing chrome.
 
 ---
 
 ## Scope
 
-**In v1:** plan + compute + status + calendar export + progression chart, Operator template only, kg only.
+**In v1:** plan + compute + status + calendar export + progression chart, Operator and Capacity (Green Protocol) templates, kg only.
 
 **Deliberately out (potential future work):**
 
 - Quick-logging _actual_ lifted weights/reps (v1 is plan + done/skip, not a training log).
-- Strava/WHOOP API integration (dropped — see "Why it exists"). A manual readiness tap stands in for WHOOP gating and survives dropping the band.
-- The running / LSS side of the Tactical Barbell Green Protocol (this app is the lifting half only).
-- Other TB templates (Op/Pro, Op/DUP, Fighter, etc.).
+- Strava + Google Calendar integration: **planned next** (see `roadmap.md` and `docs/superpowers/specs/`), via the Electron main process. A manual readiness tap stands in for WHOOP gating.
+- Other TB templates beyond Operator and Capacity (Op/Pro, Op/DUP, Fighter, etc.).
 
 ---
 
