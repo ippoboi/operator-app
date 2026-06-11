@@ -220,7 +220,7 @@ const ICONS={
   progress:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="20"/><line x1="7" y1="20" x2="7" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="17" y1="20" x2="17" y2="15"/></svg>',
   setup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.3" fill="var(--side)"/><circle cx="15" cy="12" r="2.3" fill="var(--side)"/><circle cx="8" cy="17" r="2.3" fill="var(--side)"/></svg>',
 };
-const { CYCLE, todayDate, ymd, parseYMD, addDays, roundTo } = Program;
+const { todayDate, ymd, parseYMD, addDays, roundTo } = Program;
 const defaults = () => Program.defaults();
 const enabledLifts = () => Program.enabledLifts(state);
 const coreLifts = () => Program.coreLifts(state);
@@ -235,6 +235,7 @@ const sessionLifts = (s) => Program.sessionLifts(state, s);
 const targetFor = (l, p, w) => Program.targetFor(state, l, p, w);
 const sessionTargets = (s) => Program.sessionTargets(state, s);
 const currentSession = (s) => Program.currentSession(state, s);
+const weekSpec = (w) => Program.weekSpec(state, w);
 function pad(n){return String(n).padStart(2,"0");}
 function fmt(n){return (Math.round(n*10)/10).toString();}
 
@@ -344,7 +345,7 @@ function renderProgram(root){
   let html=`<div class="view-title">Program</div><div class="sub">${state.weeks} weeks · ${state.liftDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")} · 6-week peaking wave (70·80·90 / deload 75 / 85·95)</div>`;
   Object.keys(byWeek).map(Number).sort((a,b)=>a-b).forEach(wk=>{
     const ss=byWeek[wk];const c=ss[0];const isC=wk===curWeek;
-    if((wk-1)%CYCLE.length===0 && wk>1){
+    if((wk-1)%Program.template(state).weeks===0 && wk>1){
       const blk=blockOf(wk)+1;
       html+=`<div class="block-sep">Block ${blk} · projected — assumes the TM step-up after block ${blk-1}</div>`;
     }
@@ -370,7 +371,8 @@ function renderProgress(root){
   if(!window.__pLift||!lifts.find(l=>l.id===window.__pLift))window.__pLift=((lifts.find(l=>l.tm!=null&&!isNaN(l.tm))||lifts[0])||{}).id||null;
   let chart=`<div class="empty"><p>Add a training max in Setup to chart the wave.</p></div>`;
   if(window.__pLift){const lift=lifts.find(l=>l.id===window.__pLift);
-    if(lift&&lift.tm!=null&&!isNaN(lift.tm)){const pts=[];for(let w=1;w<=state.weeks;w++)pts.push({w,v:roundTo(CYCLE[(w-1)%CYCLE.length].pct*effectiveTM(lift,w),state.increment)});chart=svgChart(pts);}
+    if(lift&&lift.tm!=null&&!isNaN(lift.tm)){const pts=[];for(let w=1;w<=state.weeks;w++){const sp=weekSpec(w);if(sp)pts.push({w,v:roundTo(sp.pct*effectiveTM(lift,w),state.increment)});}
+chart=svgChart(pts,Program.template(state).weeks);}
     else if(lift){chart=`<div class="empty"><h3>${escapeHtml(shortName(lift.name))} — bodyweight</h3><p>No loaded progression to chart yet. Add a training max once you start adding weight (a belt).</p></div>`;}
   }
   const chips=lifts.map(l=>`<button class="chip" data-lift="${l.id}" aria-pressed="${l.id===window.__pLift}">${escapeHtml(shortName(l.name))}</button>`).join("");
@@ -389,7 +391,7 @@ function renderProgress(root){
   wireChart(root);
 }
 
-function svgChart(pts){
+function svgChart(pts,blkWeeks){
   const W=720,H=230,padL=44,padR=16,padT=16,padB=28;
   const xs=pts.map(p=>p.w),ys=pts.map(p=>p.v);
   const minY=Math.min.apply(null,ys),maxY=Math.max.apply(null,ys);
@@ -398,7 +400,7 @@ function svgChart(pts){
   const Y=v=>padT+(1-(v-lo)/Math.max(1,hi-lo))*(H-padT-padB);
   let grid="",ticks="";
   for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,y=Y(v);grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;ticks+=`<text x="${padL-9}" y="${(y+4).toFixed(1)}" text-anchor="end" fill="var(--faint)" font-size="11" font-family="var(--mono)">${Math.round(v)}</text>`;}
-  const BLK=CYCLE.length;
+  const BLK=blkWeeks||6;
   const mk=arr=>arr.map((p,i)=>(i?"L":"M")+X(p.w).toFixed(1)+" "+Y(p.v).toFixed(1)).join(" ");
   const solidPts=pts.filter(p=>p.w<=BLK),dashPts=pts.filter(p=>p.w>=BLK);
   const solidPath=solidPts.length>1?`<path d="${mk(solidPts)}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`:"";

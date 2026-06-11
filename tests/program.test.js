@@ -142,3 +142,48 @@ test("sessionTargets: Monday session returns [fsq, dbb, wpu] in order", () => {
   const targets = Program.sessionTargets(s, mon);
   assert.deepEqual(targets.map(t => t.ref.id), ["fsq", "dbb", "wpu"]);
 });
+
+function capacityState(over = {}) {
+  return Object.assign(baseState(), { template: "capacity12", weeks: 12 }, over);
+}
+
+test("capacity12: weeks 1-3 load 70/80/90, schemes 3x5/3x5/3x3", () => {
+  const s = capacityState();
+  assert.deepEqual(Program.weekSpec(s, 1), { pct: 0.70, sets: 3, reps: 5 });
+  assert.deepEqual(Program.weekSpec(s, 2), { pct: 0.80, sets: 3, reps: 5 });
+  assert.deepEqual(Program.weekSpec(s, 3), { pct: 0.90, sets: 3, reps: 3 });
+});
+
+test("capacity12: weeks 4 and 8 are optional 40% 2x5 deloads", () => {
+  const s = capacityState();
+  for (const w of [4, 8]) {
+    const spec = Program.weekSpec(s, w);
+    assert.equal(spec.pct, 0.40);
+    assert.equal(spec.sets, 2);
+    assert.equal(spec.reps, 5);
+    assert.equal(spec.deload, true);
+    assert.equal(spec.optional, true);
+  }
+});
+
+test("capacity12: week 12 has no lifting at all", () => {
+  const s = capacityState();
+  assert.equal(Program.weekSpec(s, 12), null);
+  const sess = Program.buildSessions(s);
+  assert.equal(sess.filter(x => x.week === 12 && x.kind === "lift").length, 0);
+  assert.equal(sess.filter(x => x.kind === "lift").length, 33); // 11 lifting weeks x 3 days
+});
+
+test("capacity12: TM steps every 4 weeks (after weeks 4 and 8)", () => {
+  const s = capacityState();
+  const fsq = s.lifts.find(l => l.id === "fsq");
+  assert.equal(Program.effectiveTM(s, fsq, 4), 85);
+  assert.equal(Program.effectiveTM(s, fsq, 5), 90);
+  assert.equal(Program.effectiveTM(s, fsq, 9), 95);
+});
+
+test("operator6 unchanged: weekSpec mirrors CYCLE", () => {
+  const s = baseState();
+  assert.equal(Program.weekSpec(s, 4).pct, 0.75);
+  assert.equal(Program.weekSpec(s, 7).pct, 0.70); // wave repeats past template length
+});

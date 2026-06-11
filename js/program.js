@@ -12,6 +12,37 @@ const Program = (() => {
     { pct: 0.95, sets: 3, reps: 1 },
   ];
 
+  const L = (pct, sets, reps, extra) => Object.assign({ pct, sets, reps }, extra || {});
+  const DELOAD_LIFT = { pct: 0.40, sets: 2, reps: 5, deload: true, optional: true };
+
+  const TEMPLATES = {
+    operator6: {
+      id: "operator6", label: "Operator — 6-week peak",
+      weeks: 6, tmStepEvery: 6,
+      lift: CYCLE.map(c => L(c.pct, c.sets, c.reps, c.deload ? { deload: true } : null)),
+      endurance: null,
+    },
+    capacity12: {
+      id: "capacity12", label: "Capacity — Green Protocol 12-week",
+      weeks: 12, tmStepEvery: 4,
+      lift: [
+        L(0.70, 3, 5), L(0.80, 3, 5), L(0.90, 3, 3), DELOAD_LIFT,
+        L(0.70, 3, 5), L(0.80, 3, 5), L(0.90, 3, 3), DELOAD_LIFT,
+        L(0.70, 3, 5), L(0.80, 3, 5), L(0.90, 3, 3), null, // wk 12: taper, no lifting
+      ],
+      endurance: null, // filled in Task 4
+    },
+  };
+
+  function template(state) { return TEMPLATES[state.template] || TEMPLATES.operator6; }
+
+  function weekSpec(state, week) {
+    const t = template(state);
+    const raw = t.lift[(week - 1) % t.weeks];
+    if (raw == null) return null;
+    return raw;
+  }
+
   /* ---- dates & rounding ---- */
   function todayDate() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
   function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -24,7 +55,7 @@ const Program = (() => {
     const t = todayDate();
     const monday = t.getDay() === 0 ? addDays(t, 1) : addDays(t, 1 - t.getDay());
     return {
-      theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
+      template: "operator6", theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
       increment: 2.5, bodyweight: null, sessionTime: "17:30", durationMin: 75,
       liftDays: [1, 3, 5],
       lifts: [
@@ -49,14 +80,19 @@ const Program = (() => {
     const days = state.liftDays.slice().sort((a, b) => a - b);
     const out = []; let idx = 0;
     for (let w = 0; w < state.weeks; w++) {
-      const ws = addDays(start, w * 7); const cyc = CYCLE[w % CYCLE.length]; const wsd = ws.getDay();
-      const dates = days.map(dow => addDays(ws, (dow - wsd + 7) % 7)).sort((a, b) => a - b);
-      dates.forEach(date => out.push({ kind: "lift", date, dateStr: ymd(date), week: w + 1, pct: cyc.pct, sets: cyc.sets, reps: cyc.reps, deload: !!cyc.deload, idx: idx++ }));
+      const week = w + 1;
+      const ws = addDays(start, w * 7); const wsd = ws.getDay();
+      const dateFor = dow => addDays(ws, (dow - wsd + 7) % 7);
+      const spec = weekSpec(state, week);
+      if (spec) {
+        days.map(dateFor).sort((a, b) => a - b).forEach(date =>
+          out.push({ kind: "lift", date, dateStr: ymd(date), week, pct: spec.pct, sets: spec.sets, reps: spec.reps, deload: !!spec.deload, optional: !!spec.optional, idx: idx++ }));
+      }
     }
     return out;
   }
 
-  function blockOf(state, week) { return Math.floor((week - 1) / CYCLE.length); }
+  function blockOf(state, week) { return Math.floor((week - 1) / template(state).tmStepEvery); }
 
   function effectiveTM(state, lift, week) {
     if (lift.tm == null || isNaN(lift.tm)) return null;
@@ -96,9 +132,9 @@ const Program = (() => {
   }
 
   return {
-    CYCLE, todayDate, ymd, parseYMD, addDays, roundTo, defaults,
+    CYCLE, TEMPLATES, todayDate, ymd, parseYMD, addDays, roundTo, defaults,
     enabledLifts, coreLifts, rotatingLifts, hasAnyTM,
-    buildSessions, blockOf, effectiveTM,
+    buildSessions, blockOf, effectiveTM, template, weekSpec,
     rotForWeekday, chosenRotating, sessionLifts,
     targetFor, sessionTargets, currentSession,
   };
