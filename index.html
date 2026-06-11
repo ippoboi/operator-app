@@ -213,7 +213,7 @@
 "use strict";
 
 const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const KEY="tb-operator-v1";
+
 const ICONS={
   today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
   program:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>',
@@ -239,8 +239,16 @@ const weekSpec = (w) => Program.weekSpec(state, w);
 function pad(n){return String(n).padStart(2,"0");}
 function fmt(n){return (Math.round(n*10)/10).toString();}
 
-function load(){try{const r=localStorage.getItem(KEY);if(!r)return defaults();return Object.assign(defaults(),JSON.parse(r));}catch(e){return defaults();}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+function load(){
+  try{
+    const r=localStorage.getItem(Program.STORAGE_KEY);
+    if(r)return Object.assign(Program.defaults(),JSON.parse(r));
+    const legacy=localStorage.getItem(Program.LEGACY_KEY);
+    if(legacy)return Program.migrateV1(JSON.parse(legacy));  // v1 left untouched as backup
+    return Program.defaults();
+  }catch(e){return Program.defaults();}
+}
+function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){}}
 let state=load(); let activeTab="today";
 
 /* ---- render ---- */

@@ -290,3 +290,26 @@ test("enduranceOverrides: sparse per-week/slot override wins over the book table
   assert.deepEqual(Program.runSpecAt(s, 2, 0), { type: "range", lo: 30, hi: 60 }); // untouched slot
   assert.deepEqual(Program.runSpecAt(s, 3, 1), { type: "range", lo: 30, hi: 60 }); // untouched week
 });
+
+test("migrateV1: adds v2 fields, defaults to operator6, preserves user data", () => {
+  const old = {
+    theme: "light", displayName: "D", startDate: "2025-11-03", weeks: 6,
+    increment: 2.5, bodyweight: 79, sessionTime: "17:30", durationMin: 75,
+    liftDays: [1, 3, 5],
+    lifts: [{ id: "fsq", name: "Front Squat", type: "barbell", enabled: true, tm: 82.5, role: "core", blockStep: 5 }],
+    status: { "2025-11-03": "done" }, readiness: { "2025-11-03": "green" },
+    sessionPick: {}, rotSchedule: { 1: "wpu" },
+  };
+  const v2 = Program.migrateV1(old);
+  assert.equal(v2.template, "operator6");
+  assert.deepEqual(v2.runDays, [2, 4, 6]);
+  assert.deepEqual(v2.enduranceOverrides, {});
+  assert.deepEqual(v2.sessionSwap, {});
+  assert.deepEqual(v2.activities, {});
+  assert.deepEqual(v2.dismissedActivities, []);
+  assert.equal(v2.status["2025-11-03"], "done");      // history survives
+  assert.equal(v2.lifts[0].tm, 82.5);                  // TMs survive
+  assert.equal(v2.theme, "light");
+  assert.equal(Program.STORAGE_KEY, "tb-operator-v2");
+  assert.equal(Program.LEGACY_KEY, "tb-operator-v1");
+});
