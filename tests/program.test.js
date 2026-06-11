@@ -201,3 +201,39 @@ test("buildSessions propagates deload/optional onto capacity deload-week session
   assert.equal(x.deload, true);
   assert.equal(x.optional, true);
 });
+
+test("capacity12: run sessions on runDays with the book's prescriptions", () => {
+  const s = capacityState(); // defaults runDays [2,4,6] = Tue/Thu/Sat
+  const sess = Program.buildSessions(s);
+  const runs = sess.filter(x => x.kind === "run");
+  assert.equal(runs.length, 36); // 12 weeks x 3
+  assert.deepEqual([...new Set(runs.map(x => x.date.getDay()))].sort(), [2, 4, 6]);
+  const w1 = runs.filter(x => x.week === 1);
+  assert.deepEqual(w1[0].run, { type: "range", lo: 30, hi: 60 });
+  assert.deepEqual(w1[2].run, { type: "range", lo: 60, hi: 90 });
+});
+
+test("capacity12: deload weeks run 3x30, week 9+ has 120'+, week 12 ends in the 6-mile test", () => {
+  const s = capacityState();
+  const runs = Program.buildSessions(s).filter(x => x.kind === "run");
+  assert.deepEqual(runs.filter(x => x.week === 4).map(x => x.run), [
+    { type: "fixed", min: 30 }, { type: "fixed", min: 30 }, { type: "fixed", min: 30 }]);
+  assert.deepEqual(runs.filter(x => x.week === 9)[2].run, { type: "plus", lo: 120 });
+  const w12 = runs.filter(x => x.week === 12);
+  assert.deepEqual(w12[2].run, { type: "test", name: "6-Mile Test", targetMin: 60 });
+});
+
+test("runLabel renders every spec type", () => {
+  assert.equal(Program.runLabel({ type: "range", lo: 30, hi: 60 }), "30–60′");
+  assert.equal(Program.runLabel({ type: "fixed", min: 30 }), "30′");
+  assert.equal(Program.runLabel({ type: "plus", lo: 120 }), "120′+");
+  assert.equal(Program.runLabel({ type: "test", name: "6-Mile Test", targetMin: 60 }), "6-Mile Test");
+});
+
+test("operator6 emits no run sessions; sessions stay date-sorted", () => {
+  const s = baseState();
+  assert.equal(Program.buildSessions(s).filter(x => x.kind === "run").length, 0);
+  const c = capacityState();
+  const all = Program.buildSessions(c);
+  for (let i = 1; i < all.length; i++) assert.ok(all[i - 1].date <= all[i].date);
+});

@@ -15,6 +15,27 @@ const Program = (() => {
   const L = (pct, sets, reps, extra) => Object.assign({ pct, sets, reps }, extra || {});
   const DELOAD_LIFT = { pct: 0.40, sets: 2, reps: 5, deload: true, optional: true };
 
+  const R = (lo, hi) => ({ type: "range", lo, hi });
+  const F = (min) => ({ type: "fixed", min });
+  const P = (lo) => ({ type: "plus", lo });
+  const TEST_6MI = { type: "test", name: "6-Mile Test", targetMin: 60 };
+
+  // Green Protocol Capacity LSS table — minutes, three run slots per week.
+  const CAPACITY_RUNS = [
+    [R(30, 60), R(30, 60), R(60, 90)],     // wk 1
+    [R(30, 60), R(30, 60), R(60, 90)],     // wk 2
+    [R(30, 60), R(30, 60), R(60, 90)],     // wk 3
+    [F(30), F(30), F(30)],                 // wk 4 deload
+    [R(60, 90), R(60, 90), R(90, 120)],    // wk 5
+    [R(60, 90), R(60, 90), R(90, 120)],    // wk 6
+    [R(60, 90), R(60, 90), R(90, 120)],    // wk 7
+    [F(30), F(30), F(30)],                 // wk 8 deload
+    [R(60, 120), R(60, 120), P(120)],      // wk 9
+    [R(60, 120), R(60, 120), P(120)],      // wk 10
+    [R(60, 120), R(60, 120), P(120)],      // wk 11
+    [F(30), F(30), TEST_6MI],              // wk 12 taper + test
+  ];
+
   const TEMPLATES = {
     operator6: {
       id: "operator6", label: "Operator — 6-week peak",
@@ -30,7 +51,7 @@ const Program = (() => {
         L(0.70, 3, 5), L(0.80, 3, 5), L(0.90, 3, 3), DELOAD_LIFT,
         L(0.70, 3, 5), L(0.80, 3, 5), L(0.90, 3, 3), null, // wk 12: taper, no lifting
       ],
-      endurance: null, // filled in Task 4
+      endurance: CAPACITY_RUNS,
     },
   };
 
@@ -41,6 +62,23 @@ const Program = (() => {
     const raw = t.lift[(week - 1) % t.weeks];
     if (raw == null) return null;
     return Object.assign({}, raw);
+  }
+
+  function runSpecAt(state, week, slot) {
+    const t = template(state);
+    if (!t.endurance) return null;
+    const ov = (state.enduranceOverrides || {})[week];
+    if (ov && ov[slot]) return ov[slot];
+    return t.endurance[(week - 1) % t.weeks][slot] || null;
+  }
+
+  function runLabel(spec) {
+    if (!spec) return "";
+    if (spec.type === "range") return spec.lo + "–" + spec.hi + "′";
+    if (spec.type === "fixed") return spec.min + "′";
+    if (spec.type === "plus") return spec.lo + "′+";
+    if (spec.type === "test") return spec.name;
+    return "";
   }
 
   /* ---- dates & rounding ---- */
@@ -58,6 +96,7 @@ const Program = (() => {
       template: "operator6", theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
       increment: 2.5, bodyweight: null, sessionTime: "17:30", durationMin: 75,
       liftDays: [1, 3, 5],
+      runDays: [2, 4, 6], enduranceOverrides: {},
       lifts: [
         { id: "fsq", name: "Front Squat", type: "barbell", enabled: true, tm: null, role: "core", blockStep: 5 },
         { id: "sdl", name: "Sumo Deadlift", type: "barbell", enabled: true, tm: null, role: "rotating", blockStep: 5 },
@@ -78,7 +117,8 @@ const Program = (() => {
   function buildSessions(state) {
     const start = parseYMD(state.startDate);
     const days = state.liftDays.slice().sort((a, b) => a - b);
-    const out = []; let idx = 0;
+    const t = template(state);
+    const out = [];
     for (let w = 0; w < state.weeks; w++) {
       const week = w + 1;
       const ws = addDays(start, w * 7); const wsd = ws.getDay();
@@ -86,9 +126,17 @@ const Program = (() => {
       const spec = weekSpec(state, week);
       if (spec) {
         days.map(dateFor).sort((a, b) => a - b).forEach(date =>
-          out.push({ kind: "lift", date, dateStr: ymd(date), week, pct: spec.pct, sets: spec.sets, reps: spec.reps, deload: !!spec.deload, optional: !!spec.optional, idx: idx++ }));
+          out.push({ kind: "lift", date, dateStr: ymd(date), week, pct: spec.pct, sets: spec.sets, reps: spec.reps, deload: !!spec.deload, optional: !!spec.optional }));
+      }
+      if (t.endurance) {
+        (state.runDays || []).slice().sort((a, b) => a - b).forEach((dow, slot) => {
+          const rs = runSpecAt(state, week, slot);
+          if (rs) out.push({ kind: "run", date: dateFor(dow), dateStr: ymd(dateFor(dow)), week, slot, run: rs });
+        });
       }
     }
+    out.sort((a, b) => a.date - b.date || (a.kind === "lift" ? -1 : 1));
+    out.forEach((s, i) => { s.idx = i; });
     return out;
   }
 
@@ -132,9 +180,9 @@ const Program = (() => {
   }
 
   return {
-    CYCLE, TEMPLATES, todayDate, ymd, parseYMD, addDays, roundTo, defaults,
+    CYCLE, TEMPLATES, CAPACITY_RUNS, todayDate, ymd, parseYMD, addDays, roundTo, defaults,
     enabledLifts, coreLifts, rotatingLifts, hasAnyTM,
-    buildSessions, blockOf, effectiveTM, template, weekSpec,
+    buildSessions, blockOf, effectiveTM, template, weekSpec, runSpecAt, runLabel,
     rotForWeekday, chosenRotating, sessionLifts,
     targetFor, sessionTargets, currentSession,
   };
