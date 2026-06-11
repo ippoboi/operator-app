@@ -295,17 +295,19 @@ function load(){
 function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){} schedulePush();}
 let state=load(); let activeTab="today";
 
-/* ---- sync (Electron only; window.api is absent under file://) ---- */
-const api=window.api||null;
+/* ---- sync (Electron only; window.api is absent under file://) ----
+   NB: the local alias must NOT be named `api` — contextBridge exposes window.api
+   as a non-configurable global, and a top-level `const api` collides with it. */
+const ipc=window.api||null;
 let syncStatus=null;   // last getSyncStatus() result
 let stravaQueue=[];    // review-queue items from the last fetch (in-memory; re-derived each sync)
 let pushT=null;
 function googleConnected(){return !!(syncStatus&&syncStatus.google&&syncStatus.google.connected);}
 function stravaConnected(){return !!(syncStatus&&syncStatus.strava&&syncStatus.strava.connected);}
 function schedulePush(){
-  if(!api||!googleConnected())return;
+  if(!ipc||!googleConnected())return;
   clearTimeout(pushT);
-  pushT=setTimeout(()=>{api.pushPlan(Program.calendarSnapshot(state)).then(st=>{syncStatus=st;}).catch(()=>{});},1200);
+  pushT=setTimeout(()=>{ipc.pushPlan(Program.calendarSnapshot(state)).then(st=>{syncStatus=st;}).catch(()=>{});},1200);
 }
 function planLite(){
   return {
@@ -317,21 +319,21 @@ function planLite(){
   };
 }
 async function runStravaSync(quiet){
-  if(!api||!stravaConnected())return;
+  if(!ipc||!stravaConnected())return;
   try{
-    const res=await api.syncStrava(planLite());
+    const res=await ipc.syncStrava(planLite());
     res.matches.forEach(m=>{state.status[m.dateStr]="done";state.activities[m.dateStr]=m.activity;});
     stravaQueue=res.queue;
     save();render();
     if(!quiet)toast(res.matches.length?res.matches.length+" matched from Strava":"Up to date");
   }catch(e){
     if(!quiet)toast("Strava sync failed");
-    if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);
+    if(ipc)syncStatus=await ipc.getSyncStatus().catch(()=>syncStatus);
     render();
   }
 }
-if(api){
-  api.getSyncStatus().then(st=>{
+if(ipc){
+  ipc.getSyncStatus().then(st=>{
     syncStatus=st;render();
     if(stravaConnected())runStravaSync(true);
     if(googleConnected())schedulePush();
@@ -408,7 +410,7 @@ function withActual(s,planHtml){
 }
 
 function queueCardHtml(){
-  if(!api||!stravaQueue.length)return "";
+  if(!ipc||!stravaQueue.length)return "";
   let rows="";
   stravaQueue.forEach((q,i)=>{
     if(q.type==="missed"){
@@ -795,28 +797,28 @@ function renderSetup(root){
     const secEl=root.querySelector(`[data-cred="${key}"][data-cf="clientSecret"]`);
     const id=idEl.value.trim(),sec=secEl.value.trim();
     try{
-      if(id||sec)syncStatus=await api.setCredentials(key,{clientId:id,clientSecret:sec});
+      if(id||sec)syncStatus=await ipc.setCredentials(key,{clientId:id,clientSecret:sec});
       b.textContent="Waiting for the browser…";b.disabled=true;
-      syncStatus=key==="google"?await api.connectGoogle():await api.connectStrava();
+      syncStatus=key==="google"?await ipc.connectGoogle():await ipc.connectStrava();
       toast("Connected");
       if(key==="google")schedulePush();else runStravaSync(true);
-    }catch(e){toast("Connect failed");if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);}
+    }catch(e){toast("Connect failed");if(ipc)syncStatus=await ipc.getSyncStatus().catch(()=>syncStatus);}
     renderSetup(root);
   });
   root.querySelectorAll("[data-disc]").forEach(b=>b.onclick=async()=>{
     if(!confirm("Disconnect? Tokens are forgotten. The Operator calendar stays in Google — delete it there if you want it gone."))return;
-    syncStatus=await api.disconnect(b.dataset.disc);renderSetup(root);
+    syncStatus=await ipc.disconnect(b.dataset.disc);renderSetup(root);
   });
   const pn=root.querySelector("#pushNow");
   if(pn)pn.onclick=async()=>{pn.disabled=true;pn.textContent="Pushing…";
-    syncStatus=await api.pushPlan(Program.calendarSnapshot(state));
+    syncStatus=await ipc.pushPlan(Program.calendarSnapshot(state));
     toast(syncStatus.google.lastError?"Push failed":"Plan pushed");renderSetup(root);};
   const fn=root.querySelector("#fetchNow");
   if(fn)fn.onclick=async()=>{fn.disabled=true;fn.textContent="Fetching…";await runStravaSync();renderSetup(root);};
 }
 
 function connectionsHtml(){
-  if(!api)return `<div class="empty"><h3>Desktop only</h3><p>Google Calendar and Strava sync run in the desktop app.<br>Everything else works right here in the browser.</p></div>`;
+  if(!ipc)return `<div class="empty"><h3>Desktop only</h3><p>Google Calendar and Strava sync run in the desktop app.<br>Everything else works right here in the browser.</p></div>`;
   if(!syncStatus)return `<div class="empty"><p>Loading sync status…</p></div>`;
   const ts=v=>v?new Date(v).toLocaleString():"—";
   const provider=(key,p,title,hint)=>{
