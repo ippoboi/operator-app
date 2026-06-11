@@ -133,7 +133,7 @@ const Program = (() => {
     const monday = t.getDay() === 0 ? addDays(t, 1) : addDays(t, 1 - t.getDay());
     return {
       template: "operator6", theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
-      increment: 2.5, bodyweight: null, sessionTime: "17:30", durationMin: 75,
+      increment: 2.5, bodyweight: null,
       liftDays: [1, 3, 5],
       runDays: [2, 4, 6], enduranceOverrides: {}, sessionSwap: {},
       activities: {}, dismissedActivities: [],
@@ -225,12 +225,14 @@ const Program = (() => {
   const LEGACY_KEY = "tb-operator-v1";
 
   function migrateV1(old) {
-    return Object.assign(defaults(), old, {
+    const s = Object.assign(defaults(), old, {
       template: "operator6",
       runDays: [2, 4, 6],
       enduranceOverrides: {}, sessionSwap: {},
       activities: {}, dismissedActivities: [],
     });
+    delete s.sessionTime; delete s.durationMin;
+    return s;
   }
 
   return {

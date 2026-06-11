@@ -314,6 +314,16 @@ test("migrateV1: adds v2 fields, defaults to operator6, preserves user data", ()
   assert.equal(Program.LEGACY_KEY, "tb-operator-v1");
 });
 
+test("v2 state has no sessionTime/durationMin; migrateV1 drops them", () => {
+  const d = Program.defaults();
+  assert.equal("sessionTime" in d, false);
+  assert.equal("durationMin" in d, false);
+  const m = Program.migrateV1({ sessionTime: "17:30", durationMin: 75, displayName: "X" });
+  assert.equal("sessionTime" in m, false);
+  assert.equal("durationMin" in m, false);
+  assert.equal(m.displayName, "X");
+});
+
 test("monthMatrix: Monday-start grid covering the whole month", () => {
   const june26 = Program.monthMatrix(2026, 5); // June 2026 starts Mon
   assert.equal(june26.length, 5);
