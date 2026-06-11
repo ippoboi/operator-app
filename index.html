@@ -153,6 +153,15 @@
   .cal-chip.gold{background:rgba(214,164,65,.12);color:var(--amber)}
   .cal-chip .dot{width:5px;height:5px;flex-shrink:0}
 
+  /* plan vs actual */
+  .pva{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+  .actual{border-left:1px solid var(--line);padding:14px 18px;min-width:0}
+  .actual .eyebrow{display:block;margin-bottom:8px}
+  .actual-name{font-size:13.5px;font-weight:600;margin-bottom:2px}
+  .actual-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:8px}
+  .actual-desc{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:pre-wrap;line-height:1.6;margin:0}
+  @media (max-width:760px){.pva{grid-template-columns:1fr}.actual{border-left:none;border-top:1px solid var(--line)}}
+
   /* progress */
   .chart-head{display:flex;align-items:center;gap:8px;margin:22px 0 12px;flex-wrap:wrap}
   .chip{font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 11px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
@@ -283,8 +292,51 @@ function load(){
     return Program.defaults();
   }catch(e){return Program.defaults();}
 }
-function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+function save(){try{localStorage.setItem(Program.STORAGE_KEY,JSON.stringify(state));}catch(e){} schedulePush();}
 let state=load(); let activeTab="today";
+
+/* ---- sync (Electron only; window.api is absent under file://) ---- */
+const api=window.api||null;
+let syncStatus=null;   // last getSyncStatus() result
+let stravaQueue=[];    // review-queue items from the last fetch (in-memory; re-derived each sync)
+let pushT=null;
+function googleConnected(){return !!(syncStatus&&syncStatus.google&&syncStatus.google.connected);}
+function stravaConnected(){return !!(syncStatus&&syncStatus.strava&&syncStatus.strava.connected);}
+function schedulePush(){
+  if(!api||!googleConnected())return;
+  clearTimeout(pushT);
+  pushT=setTimeout(()=>{api.pushPlan(Program.calendarSnapshot(state)).then(st=>{syncStatus=st;}).catch(()=>{});},1200);
+}
+function planLite(){
+  return {
+    sessions:buildSessions().map(s=>({dateStr:s.dateStr,kind:s.kind,sport:Program.sportFor(state,s),
+      status:state.status[s.dateStr]||null,activityId:(state.activities[s.dateStr]||{}).id||null})),
+    dismissed:state.dismissedActivities,
+    today:ymd(todayDate()),
+    windowStart:ymd(addDays(todayDate(),-14)),
+  };
+}
+async function runStravaSync(quiet){
+  if(!api||!stravaConnected())return;
+  try{
+    const res=await api.syncStrava(planLite());
+    res.matches.forEach(m=>{state.status[m.dateStr]="done";state.activities[m.dateStr]=m.activity;});
+    stravaQueue=res.queue;
+    save();render();
+    if(!quiet)toast(res.matches.length?res.matches.length+" matched from Strava":"Up to date");
+  }catch(e){
+    if(!quiet)toast("Strava sync failed");
+    if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);
+    render();
+  }
+}
+if(api){
+  api.getSyncStatus().then(st=>{
+    syncStatus=st;render();
+    if(stravaConnected())runStravaSync(true);
+    if(googleConnected())schedulePush();
+  }).catch(()=>{});
+}
 let calYM=null;   // "YYYY-MM" being viewed; null = month of today
 let calSel=null;  // selected dateStr in the calendar
 function calMonth(){if(calYM){const p=calYM.split("-").map(Number);return{y:p[0],m:p[1]-1};}const t=todayDate();return{y:t.getFullYear(),m:t.getMonth()};}
@@ -336,6 +388,64 @@ function liftRowsHtml(session){
   }).join("");
 }
 
+function actualHtml(s){
+  const a=state.activities[s.dateStr];
+  if(state.status[s.dateStr]!=="done"||!a)return "";
+  const secs=a.movingSec||a.durationSec||0;
+  let meta=Math.round(secs/60)+"′";
+  if(a.distanceKm){
+    const p=secs/a.distanceKm;
+    meta+=` · ${a.distanceKm} km · ${Math.floor(p/60)}:${pad(Math.round(p%60))}/km`;
+  }
+  return `<div class="actual"><span class="eyebrow">Actual — Strava</span>
+    <div class="actual-name">${escapeHtml(a.name)}</div>
+    <div class="actual-meta">${meta}</div>
+    ${a.description?`<pre class="actual-desc">${escapeHtml(a.description)}</pre>`:`<p class="note" style="margin:0">No description on the activity.</p>`}</div>`;
+}
+function withActual(s,planHtml){
+  const act=actualHtml(s);
+  return act?`<div class="pva"><div>${planHtml}</div>${act}</div>`:planHtml;
+}
+
+function queueCardHtml(){
+  if(!api||!stravaQueue.length)return "";
+  let rows="";
+  stravaQueue.forEach((q,i)=>{
+    if(q.type==="missed"){
+      rows+=`<div class="lift-row"><div class="lift-meta"><div class="lift-name">Planned ${q.kind} not recorded</div>
+        <div class="lift-scheme">${q.dateStr} — no Strava activity found</div></div>
+        <div class="actions"><button class="btn ghost" data-qi="${i}" data-qa="skip">Mark skipped</button>
+        <button class="btn ghost" data-qi="${i}" data-qa="drop">Leave planned</button></div></div>`;
+      return;
+    }
+    const why={swap:"ride on a run day",restday:"no session this day",mismatch:"sport doesn't fit the plan",ambiguous:"several options this day"}[q.type];
+    (q.activities||[q.activity]).forEach(a=>{
+      const meta=`${q.dateStr} · ${escapeHtml(a.rawType)} · ${Math.round((a.movingSec||a.durationSec)/60)}′${a.distanceKm?` · ${a.distanceKm} km`:""}`;
+      let btns="";
+      if(q.type==="swap")btns+=`<button class="btn" data-qi="${i}" data-qa="swap" data-aid="${a.id}">Swap to bike &amp; match</button>`;
+      (q.candidates||[]).forEach(c=>{btns+=`<button class="btn" data-qi="${i}" data-qa="attach" data-aid="${a.id}" data-date="${c.dateStr}">Attach to ${c.kind}</button>`;});
+      btns+=`<button class="btn ghost" data-qi="${i}" data-qa="dismiss" data-aid="${a.id}">Not training</button>`;
+      rows+=`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(a.name)}</div>
+        <div class="lift-scheme">${meta} · ${why}</div></div><div class="actions">${btns}</div></div>`;
+    });
+  });
+  return `<div class="card" style="margin-top:18px"><div class="card-head"><h3>Strava review</h3><span class="meta">${stravaQueue.length} to resolve</span></div>${rows}</div>`;
+}
+function wireQueue(root){
+  root.querySelectorAll("[data-qa]").forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.qi;const q=stravaQueue[i];if(!q)return;
+    const acts=q.activities||[q.activity];
+    const act=b.dataset.aid?acts.find(a=>a&&String(a.id)===b.dataset.aid):null;
+    const qa=b.dataset.qa;
+    if(qa==="dismiss"&&act)state.dismissedActivities.push(act.id);
+    else if(qa==="skip")state.status[q.dateStr]="skipped";
+    else if(qa==="swap"&&act){state.sessionSwap[q.dateStr]="bike";state.status[q.dateStr]="done";state.activities[q.dateStr]=act;}
+    else if(qa==="attach"&&act){state.status[b.dataset.date]="done";state.activities[b.dataset.date]=act;}
+    stravaQueue.splice(i,1);
+    save();render();
+  });
+}
+
 function renderToday(root){
   const sessions=buildSessions();const cur=currentSession(sessions);
   if(cur&&cur.kind==="run"){renderTodayRun(root,cur);return;}
@@ -371,7 +481,7 @@ function renderToday(root){
     ${rotPicker}
     <div class="card">
       <div class="card-head"><h3>${isToday?"Today's session":"Next session"}${cur.optional?' · <span style="color:var(--amber)">Deload — do not add plates</span>':""}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
-      ${rows}
+      ${withActual(cur,rows)}
     </div>
     <div class="readiness" id="readiness">
       <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
@@ -380,16 +490,17 @@ function renderToday(root){
     </div>
     <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
     <div class="actions">
-      <button class="btn primary" id="icsBtn">Add program to calendar</button>
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-    </div>`;
+      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+    </div>${queueCardHtml()}`;
   const rp=root.querySelector("#rotpick");
   if(rp)rp.addEventListener("click",e=>{const b=e.target.closest("[data-rot]");if(!b)return;state.sessionPick[cur.dateStr]=b.dataset.rot;save();render();});
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
-  root.querySelector("#icsBtn").onclick=exportICS;
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
+  wireQueue(root);
 }
 
 function renderTodayRun(root,cur){
@@ -416,9 +527,9 @@ function renderTodayRun(root,cur){
     </div>
     <div class="card">
       <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel}</span></div>
-      <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
+      ${withActual(cur,`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
         <div class="lift-scheme">${escapeHtml(hint)}</div></div>
-        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>`)}
     </div>
     <div class="readiness" id="readiness">
       <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
@@ -430,11 +541,14 @@ function renderTodayRun(root,cur){
       <button class="btn" id="swapBtn">${sport==="bike"?"Back to run":"Swap to bike"}</button>
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-    </div>`;
+      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+    </div>${queueCardHtml()}`;
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
   root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
+  wireQueue(root);
 }
 
 function chipFor(s){
@@ -456,7 +570,7 @@ function renderCalendar(root){
   const tStr=ymd(todayDate());
   const monthName=new Date(c.y,c.m,1).toLocaleString("en",{month:"long",year:"numeric"});
   const t=Program.template(state);
-  let grid=`<div class="cal-head"><button class="btn ghost" id="calPrev">‹ Prev</button><span class="cal-title">${monthName}</span><button class="btn ghost" id="calNext">Next ›</button></div>
+  let grid=`<div class="cal-head"><button class="btn ghost" id="calPrev">‹ Prev</button><span class="cal-title">${monthName}</span><span style="display:flex;gap:8px">${stravaConnected()?`<button class="btn ghost" id="calSync">↻</button>`:""}<button class="btn ghost" id="calNext">Next ›</button></span></div>
     <div class="cal-grid cal-dow"><span></span>${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<span>${d}</span>`).join("")}</div>`;
   weeks.forEach(row=>{
     const rowSess=row.map(d=>byDate[ymd(d)]||[]).flat();
@@ -474,6 +588,7 @@ function renderCalendar(root){
   root.innerHTML=`<div class="view-title">Calendar</div><div class="sub">${state.weeks} weeks · ${t.label}${t.endurance?` · runs ${state.runDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")}`:""}</div>${grid}<div id="calDetail" style="margin-top:18px">${detail}</div>`;
   root.querySelector("#calPrev").onclick=()=>shiftCalMonth(-1);
   root.querySelector("#calNext").onclick=()=>shiftCalMonth(1);
+  const cs=root.querySelector("#calSync");if(cs)cs.onclick=()=>runStravaSync();
   root.querySelectorAll(".cal-cell.has").forEach(cell=>cell.onclick=()=>{calSel=calSel===cell.dataset.date?null:cell.dataset.date;render();});
   wireCalDetail(root);
 }
@@ -491,13 +606,13 @@ function calDetailHtml(ss){
       const sport=Program.sportFor(state,s);
       const title=s.run.type==="test"?s.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
       return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${escapeHtml(title)}</h3><span class="meta">${dateLabel}</span></div>
-        <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div><div class="lift-scheme">low aerobic · flat terrain</div></div>
-        <div class="lift-val"><div class="kg run">${escapeHtml(Program.runLabel(s.run))}</div></div></div>${statusBtns}</div>`;
+        ${withActual(s,`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div><div class="lift-scheme">low aerobic · flat terrain</div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(Program.runLabel(s.run))}</div></div></div>`)}${statusBtns}</div>`;
     }
     const rot=rotatingLifts();const ch=chosenRotating(s);
     const rotPick=rot.length>1?`<div class="rotpick" style="padding:0 18px 4px"><span class="rotpick-label">Rotating slot</span><div class="seg">${rot.map(l=>`<button class="seg-btn" data-act="rot" data-date="${s.dateStr}" data-rot="${l.id}" aria-pressed="${ch&&ch.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>`:"";
     return `<div class="card"><div class="card-head"><h3>Week ${s.week} — ${Math.round(s.pct*100)}%${s.optional?' · <span style="color:var(--amber)">Deload</span>':""}</h3><span class="meta">${dateLabel} · ${s.sets}×${s.reps}</span></div>
-      ${liftRowsHtml(s)}${rotPick}${statusBtns}</div>`;
+      ${withActual(s,liftRowsHtml(s))}${rotPick}${statusBtns}</div>`;
   }).join("");
 }
 
@@ -611,17 +726,14 @@ function renderSetup(root){
     body=`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one).</p></div>
     ${enduranceEditorHtml()}`;
   }else if(setupTab==="connections"){
-    body=`<div class="empty"><h3>Connections</h3><p>Google Calendar live sync and Strava import land in the next update.<br>The app stays fully usable offline either way.</p></div>`;
+    body=connectionsHtml();
   }else{
     body=`<div class="group"><span class="eyebrow">General</span>
       <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
       <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
     </div>
-    <div class="group"><span class="eyebrow">Calendar</span>
-      <div class="field"><label>Session time</label><input type="time" value="${state.sessionTime}" data-k="sessionTime"></div>
-      <div class="field"><label>Duration <span class="hint">minutes</span></label><input type="number" value="${state.durationMin}" data-k="durationMin"></div>
+    <div class="group"><span class="eyebrow">Data</span>
       <div class="setup-actions">
-        <button class="btn primary" id="icsBtn2">Download .ics</button>
         <button class="btn" id="backupBtn">Back up data</button>
         <button class="btn" id="restoreBtn">Restore</button>
         <button class="btn ghost" id="resetBtn">Reset all</button>
@@ -633,7 +745,7 @@ function renderSetup(root){
   root.querySelectorAll("[data-stab]").forEach(b=>b.onclick=()=>{setupTab=b.dataset.stab;renderSetup(root);});
   root.querySelectorAll("[data-k]").forEach(inp=>inp.addEventListener("change",()=>{
     const k=inp.dataset.k;let v=inp.value;
-    if(["weeks","durationMin"].includes(k))v=parseInt(v,10)||state[k];
+    if(k==="weeks")v=parseInt(v,10)||state[k];
     else if(k==="increment")v=parseFloat(v)||state[k];
     else if(k==="bodyweight")v=v===""?null:parseFloat(v);
     state[k]=v;save();render();
@@ -655,8 +767,6 @@ function renderSetup(root){
     row.querySelector("[data-tm]").addEventListener("change",e=>{lift.tm=e.target.value===""?null:parseFloat(e.target.value);save();});});
   root.querySelectorAll("[data-step]").forEach(inp=>inp.addEventListener("change",()=>{const lift=state.lifts.find(l=>l.id===inp.dataset.id);if(lift){lift.blockStep=inp.value===""?0:parseFloat(inp.value);save();}}));
   root.querySelectorAll("[data-rotday]").forEach(b=>b.onclick=()=>{state.rotSchedule[Number(b.dataset.rotday)]=b.dataset.rotlift;save();renderSetup(root);});
-  const icsB=root.querySelector("#icsBtn2");
-  if(icsB)icsB.onclick=exportICS;
   const bkB=root.querySelector("#backupBtn");
   if(bkB)bkB.onclick=()=>download("operator-backup.json",JSON.stringify(state,null,2),"application/json");
   const rsB=root.querySelector("#restoreBtn");
@@ -679,6 +789,59 @@ function renderSetup(root){
   }));
   const rb=root.querySelector("#resetBook");
   if(rb)rb.onclick=()=>{if(confirm("Discard all endurance edits and restore the book table?")){state.enduranceOverrides={};save();renderSetup(root);toast("Book values restored");}};
+  root.querySelectorAll("[data-conn]").forEach(b=>b.onclick=async()=>{
+    const key=b.dataset.conn;
+    const idEl=root.querySelector(`[data-cred="${key}"][data-cf="clientId"]`);
+    const secEl=root.querySelector(`[data-cred="${key}"][data-cf="clientSecret"]`);
+    const id=idEl.value.trim(),sec=secEl.value.trim();
+    try{
+      if(id||sec)syncStatus=await api.setCredentials(key,{clientId:id,clientSecret:sec});
+      b.textContent="Waiting for the browser…";b.disabled=true;
+      syncStatus=key==="google"?await api.connectGoogle():await api.connectStrava();
+      toast("Connected");
+      if(key==="google")schedulePush();else runStravaSync(true);
+    }catch(e){toast("Connect failed");if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);}
+    renderSetup(root);
+  });
+  root.querySelectorAll("[data-disc]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Disconnect? Tokens are forgotten. The Operator calendar stays in Google — delete it there if you want it gone."))return;
+    syncStatus=await api.disconnect(b.dataset.disc);renderSetup(root);
+  });
+  const pn=root.querySelector("#pushNow");
+  if(pn)pn.onclick=async()=>{pn.disabled=true;pn.textContent="Pushing…";
+    syncStatus=await api.pushPlan(Program.calendarSnapshot(state));
+    toast(syncStatus.google.lastError?"Push failed":"Plan pushed");renderSetup(root);};
+  const fn=root.querySelector("#fetchNow");
+  if(fn)fn.onclick=async()=>{fn.disabled=true;fn.textContent="Fetching…";await runStravaSync();renderSetup(root);};
+}
+
+function connectionsHtml(){
+  if(!api)return `<div class="empty"><h3>Desktop only</h3><p>Google Calendar and Strava sync run in the desktop app.<br>Everything else works right here in the browser.</p></div>`;
+  if(!syncStatus)return `<div class="empty"><p>Loading sync status…</p></div>`;
+  const ts=v=>v?new Date(v).toLocaleString():"—";
+  const provider=(key,p,title,hint)=>{
+    const dot=`<span class="dot ${p.connected?"done":""}" style="display:inline-block;vertical-align:middle;margin-right:7px"></span>`;
+    if(p.connected){
+      const when=key==="google"?p.lastSync:p.lastFetch;
+      return `<div class="group"><span class="eyebrow">${dot}${title} — connected</span>
+        <div class="field"><label>${key==="google"?"Mirror":"Activities"}<span class="hint">${key==="google"?"all-day plan events in the “Operator” calendar":"last ~14 days, matched to the plan"}</span></label>
+          <button class="btn ghost" data-disc="${key}">Disconnect</button></div>
+        <div class="field"><label>${key==="google"?"Last push":"Last fetch"}${p.lastError?`<span class="hint" style="color:var(--red)">${escapeHtml(p.lastError)}</span>`:""}</label>
+          <span class="mono" style="font-size:12px;color:var(--muted)">${ts(when)}</span></div>
+        <div class="setup-actions">${key==="google"
+          ?`<button class="btn" id="pushNow">Push plan now</button>`
+          :`<button class="btn" id="fetchNow">↻ Fetch activities</button>`}</div></div>`;
+    }
+    return `<div class="group"><span class="eyebrow">${dot}${title}</span>
+      <div class="field"><label>Client ID <span class="hint">${hint}</span></label>
+        <input type="text" style="width:300px;text-align:left" data-cred="${key}" data-cf="clientId" placeholder="${p.hasCredentials?"saved — leave blank to reuse":""}"></div>
+      <div class="field"><label>Client secret</label>
+        <input type="text" style="width:300px;text-align:left" data-cred="${key}" data-cf="clientSecret" placeholder="${p.hasCredentials?"saved — leave blank to reuse":""}"></div>
+      <div class="setup-actions"><button class="btn primary" data-conn="${key}">Connect ${title}</button></div>
+      ${p.lastError?`<p class="note" style="color:var(--red)">${escapeHtml(p.lastError)}</p>`:""}</div>`;
+  };
+  return provider("google",syncStatus.google,"Google Calendar","OAuth Desktop client — see README")
+       +provider("strava",syncStatus.strava,"Strava","API application — see README");
 }
 
 function enduranceEditorHtml(){
@@ -696,32 +859,6 @@ function enduranceEditorHtml(){
     <p class="note">Formats: <b>30</b> fixed · <b>30-60</b> range · <b>120+</b> open-ended. Accent border = edited; clear a cell to restore the book value. The 6-Mile Test isn't editable.</p>
     <div class="setup-actions"><button class="btn" id="resetBook">Reset all to book</button></div></div>`;
 }
-
-/* ---- ics ---- */
-function escICS(s){return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
-function stamp(d){return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+"T"+pad(d.getUTCHours())+pad(d.getUTCMinutes())+pad(d.getUTCSeconds())+"Z";}
-function buildICS(){
-  const sessions=buildSessions();const[hh,mm]=state.sessionTime.split(":").map(Number);
-  const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Operator//TB//EN","CALSCALE:GREGORIAN"];const now=new Date();
-  sessions.forEach(s=>{
-    const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
-    const f=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"T"+pad(d.getHours())+pad(d.getMinutes())+"00";
-    let summary,desc;
-    if(s.kind==="run"){
-      const sport=Program.sportFor(state,s)==="bike"?"LSS Bike":"LSS Run";
-      summary="Operator — "+sport+" "+Program.runLabel(s.run);
-      desc="Week "+s.week+" · "+sport+" "+Program.runLabel(s.run)+"\n\nLow aerobic range, flat terrain.";
-    }else{
-      const tg=sessionTargets(s);const pl=Math.round(s.pct*100);
-      const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
-      summary="Operator — Week "+s.week+" ("+pl+"%)"+(s.optional?" · Deload":"");
-      desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
-    }
-    lines.push("BEGIN:VEVENT","UID:operator-"+s.kind+"-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS(summary),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
-  });
-  lines.push("END:VCALENDAR");return lines.join("\r\n");
-}
-function exportICS(){if(!hasAnyTM()){toast("Set a training max first");activeTab="setup";render();return;}download("operator-program.ics",buildICS(),"text/calendar");toast("Calendar exported");}
 
 /* ---- utils ---- */
 function download(name,text,mime){const b=new Blob([text],{type:mime});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),800);}

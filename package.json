@@ -20,6 +20,8 @@
       "index.html",
       "js/**",
       "main.js",
+      "preload.js",
+      "main/**",
       "package.json"
     ],
     "directories": {

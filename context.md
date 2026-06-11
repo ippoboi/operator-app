@@ -1,6 +1,6 @@
 # Operator — Project Context
 
-A local, single-user desktop/web app that runs a **Tactical Barbell "Operator"** strength block: you enter a training max per lift once, and it computes every session's working weights in kg, tracks progress, and exports a calendar. No backend, no accounts, no network — all state lives on the user's machine.
+A local, single-user desktop/web app that runs a **Tactical Barbell "Operator"** strength block: you enter a training max per lift once, and it computes every session's working weights in kg, tracks progress, mirrors the plan live into a dedicated "Operator" Google Calendar, and marks sessions done from Strava activities. No backend, no accounts — all state lives on the user's machine; the Electron main process is the only thing that talks to the network (Google + Strava, with the owner's own API credentials).
 
 It ships two ways from one codebase: a self-contained `index.html` (open in any browser) and an Electron wrapper packaged into a native app.
 
@@ -9,7 +9,7 @@ It ships two ways from one codebase: a self-contained `index.html` (open in any 
 ## Why it exists
 
 - **Kill the recurring math.** Before each session you'd otherwise compute "week 2, front squat is 80% of an 85 kg TM = 67.5 kg" by hand or in a spreadsheet. The app just hands you the number.
-- **Local-first / data sovereignty.** An earlier plan to auto-pull sessions from the Strava and WHOOP APIs was dropped: neither service exposes structured strength data (sets/reps/weight) — Strava only returns a free-text activity, WHOOP only strain/recovery. So the app owns its data outright and never phones home. Calendar sharing is one-way via `.ics` export.
+- **Local-first / data sovereignty.** The app owns its data outright. Strava integration is read-only and display-verbatim (Strava has no structured strength data — the owner logs lifts in the activity description, shown unparsed next to the plan). Calendar sharing is a one-way push into a dedicated "Operator" Google calendar; the user's own calendars are never read or modified.
 - **Minimal, fast, durable.** Vanilla JS, zero runtime dependencies, hand-rolled SVG charts. It should still open and work in ten years.
 
 ---
@@ -53,9 +53,16 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
 
 ## Architecture
 
-- **`index.html`** — markup, CSS, and UI logic; pure program math lives in **`js/program.js`** (loaded via plain `<script>`, also `require()`-able by `node --test` — see `tests/`). No framework, no build step. Charts are hand-drawn SVG. Persistence is `localStorage` (key `tb-operator-v2`; v1 auto-migrates on first load, the old key is left as a backup). Works opened directly via `file://`.
-- **`main.js`** — Electron main process; opens `index.html` in a `BrowserWindow` (hidden-inset title bar, inset traffic lights on macOS).
-- **`package.json`** — npm scripts (`start`, `dist`) and the electron-builder config (mac `.dmg` / win `.exe` / linux AppImage; `mac.identity: null` so unsigned personal builds succeed).
+- **`index.html`** — markup, CSS, and UI logic; pure program math lives in **`js/program.js`** (loaded via plain `<script>`, also `require()`-able by `node --test` — see `tests/`). No framework, no build step. Charts are hand-drawn SVG. Persistence is `localStorage` (key `tb-operator-v2`; v1 auto-migrates on first load, the old key is left as a backup). Works opened directly via `file://` — there `window.api` is absent, sync UI hides, everything else works.
+- **`main.js`** — Electron entry: window + IPC wiring for the sync backend.
+- **`preload.js`** — contextBridge exposing **`window.api`**: `getSyncStatus / setCredentials / connectGoogle / connectStrava / disconnect / pushPlan / syncStrava`. This seam is deliberately API-shaped (plain JSON in/out): **V2 promotes `main/` to a real backend (auth + DB, Docker on a home server) and these calls become HTTP endpoints** — keep it promotable.
+- **`main/`** — the integration "backend", bare `fetch`, no SDKs:
+  - `store.js` — tokens encrypted via `safeStorage` + sync-state JSON (`sync-state.json` in `userData`: credentials, GCal `eventMap`, lastSync/lastError).
+  - `oauth.js` — system-browser OAuth, throwaway `http://127.0.0.1:<port>/callback` loopback, PKCE for Google; silent refresh.
+  - `gcal.js` — calendar mirror: pure `diffPlan` against the stored `eventMap` (keys `kind:dateStr`), insert/PUT/delete deltas, self-heals hand-deleted events.
+  - `strava.js` — pure `matchActivities(plan, activities)` verdicts + activity fetch/hydrate. Pure parts of both are `node --test`ed like `js/program.js`.
+- Renderer pushes a debounced `Program.calendarSnapshot(state)` on every save; planned sessions are all-day events (✓/⨯ prefixes), Strava-confirmed sessions upgrade to timed events at the real start/duration.
+- **`package.json`** — npm scripts (`start`, `test`, `dist`) and the electron-builder config (mac `.dmg` / win `.exe` / linux AppImage; `mac.identity: null` so unsigned personal builds succeed).
 - **`build/`** — generated app icons (`icon.icns`, `icon.ico`, `icon.png`).
 - **`assets/logo.svg`** — source barbell logo (vector), the basis for the icons.
 
@@ -68,15 +75,13 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
   runDays: number[],              // LSS days (Capacity), 0=Sun .. 6=Sat (default [2,4,6]); kept disjoint from liftDays
   enduranceOverrides: { [week]: { [slot]: runSpec } },  // sparse edits over the book table
   sessionSwap: { [dateStr]: "bike" },  // run→bike swap per date
-  activities: {},                 // reserved: Strava activity per date (next plan)
-  dismissedActivities: [],        // reserved: Strava ids marked "not training"
+  activities: { [dateStr]: { id, sport, startISO, durationSec, ... } },  // matched Strava activity per date
+  dismissedActivities: [],        // Strava ids marked "not training"
   displayName: string,
   startDate: "YYYY-MM-DD",        // week-1 Monday
   weeks: number,                  // program length; the 6-week block repeats
   increment: number,              // kg plate rounding (default 2.5)
   bodyweight: number | null,      // for pull-up added load
-  sessionTime: "HH:MM",
-  durationMin: number,            // for .ics events
   liftDays: number[],             // weekdays, 0=Sun .. 6=Sat (default [1,3,5])
   lifts: [{
     id, name,
@@ -105,20 +110,21 @@ Lean, instrument-panel minimalism. Near-black charcoal (`#0b0c0e`), off-white te
 
 ## Scope
 
-**In v1:** plan + compute + status + calendar export + progression chart, Operator and Capacity (Green Protocol) templates, kg only.
+**In v1 (complete):** plan + compute + status + progression chart, Operator and Capacity (Green Protocol) templates, kg only, live Google Calendar mirror, Strava auto-completion with review queue and plan-vs-actual.
 
 **Deliberately out (potential future work):**
 
-- Quick-logging _actual_ lifted weights/reps (v1 is plan + done/skip, not a training log).
-- Strava + Google Calendar integration: **planned next** (see `roadmap.md` and `docs/superpowers/specs/`), via the Electron main process. A manual readiness tap stands in for WHOOP gating.
+- Quick-logging _actual_ lifted weights/reps in-app (Strava descriptions are shown verbatim, never parsed).
+- WHOOP — a manual readiness tap stands in for WHOOP gating.
 - Other TB templates beyond Operator and Capacity (Op/Pro, Op/DUP, Fighter, etc.).
+- V2 trajectory: real backend (auth + DB, Docker on a home server) + mobile app — `main/` and the `window.api` seam are what get promoted.
 
 ---
 
 ## Conventions for anyone editing this
 
-- Keep it **single-file and dependency-free** (`index.html`). No bundler, no npm runtime deps — Electron is the only dev dependency.
-- **Local-first.** No network calls, no analytics, no storage outside `localStorage` + user-initiated JSON backup and `.ics` export.
+- Keep it **a handful of plain files**, dependency-free. No bundler, no npm runtime deps — Electron is the only dev dependency; Google/Strava are called with bare `fetch` from the main process.
+- **Local-first.** Network calls only from `main/` to Google/Strava with the owner's own credentials; no analytics; storage is `localStorage` + `userData` sync state + user-initiated JSON backup.
 - **kg throughout.** Round to the configured plate `increment`.
 - Charts are plain SVG strings built in JS — no chart library.
 - Run/build instructions live in `README.md`.
