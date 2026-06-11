@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Operator logo — barbell">
+  <rect width="1024" height="1024" rx="230" fill="#0b0c0e"/>
+  <rect x="40" y="40" width="944" height="944" rx="196" fill="none" stroke="#1c1f23" stroke-width="2"/>
+  <!-- handle -->
+  <rect x="274" y="491" width="476" height="42" rx="21" fill="#e7e9ec"/>
+  <!-- end collars -->
+  <rect x="276" y="437" width="40" height="150" rx="16" fill="#e7e9ec"/>
+  <rect x="708" y="437" width="40" height="150" rx="16" fill="#e7e9ec"/>
+  <!-- plates (accent) -->
+  <rect x="336" y="362" width="72" height="300" rx="22" fill="#6b8afd"/>
+  <rect x="616" y="362" width="72" height="300" rx="22" fill="#6b8afd"/>
+</svg>

@@ -1,0 +1,13 @@
+# deps & build output
+node_modules/
+dist/
+
+# OS noise
+.DS_Store
+
+# brainstorm companion sessions
+.superpowers/
+
+# personal training data & local tool state
+operator-backup.json
+.claude/settings.local.json
