@@ -87,6 +87,39 @@ const Program = (() => {
     return "";
   }
 
+  /* Monday-start month grid: array of week rows (7 Dates each), covering every day of the month */
+  function monthMatrix(year, monthIdx) {
+    const first = new Date(year, monthIdx, 1);
+    let cur = addDays(first, -((first.getDay() + 6) % 7));
+    const weeks = [];
+    do {
+      const row = [];
+      for (let i = 0; i < 7; i++) { row.push(cur); cur = addDays(cur, 1); }
+      weeks.push(row);
+    } while (cur.getMonth() === monthIdx);
+    return weeks;
+  }
+
+  /* "30" | "30-60" | "120+" -> run spec; null on anything else (tests aren't editable) */
+  function parseRunSpec(str) {
+    const s = String(str).trim();
+    let m;
+    if ((m = s.match(/^(\d+)\s*[-–]\s*(\d+)$/))) return { type: "range", lo: +m[1], hi: +m[2] };
+    if ((m = s.match(/^(\d+)\s*\+$/))) return { type: "plus", lo: +m[1] };
+    if ((m = s.match(/^(\d+)$/))) return { type: "fixed", min: +m[1] };
+    return null;
+  }
+
+  /* plain-ASCII editing form (runLabel uses typographic chars) */
+  function runEditLabel(spec) {
+    if (!spec) return "";
+    if (spec.type === "range") return spec.lo + "-" + spec.hi;
+    if (spec.type === "fixed") return String(spec.min);
+    if (spec.type === "plus") return spec.lo + "+";
+    if (spec.type === "test") return spec.name;
+    return "";
+  }
+
   /* ---- dates & rounding ---- */
   function todayDate() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
   function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -207,6 +240,7 @@ const Program = (() => {
     rotForWeekday, chosenRotating, sessionLifts,
     targetFor, sessionTargets, currentSession,
     STORAGE_KEY, LEGACY_KEY, migrateV1,
+    monthMatrix, parseRunSpec, runEditLabel,
   };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = Program;

@@ -313,3 +313,37 @@ test("migrateV1: adds v2 fields, defaults to operator6, preserves user data", ()
   assert.equal(Program.STORAGE_KEY, "tb-operator-v2");
   assert.equal(Program.LEGACY_KEY, "tb-operator-v1");
 });
+
+test("monthMatrix: Monday-start grid covering the whole month", () => {
+  const june26 = Program.monthMatrix(2026, 5); // June 2026 starts Mon
+  assert.equal(june26.length, 5);
+  assert.equal(Program.ymd(june26[0][0]), "2026-06-01");
+  assert.equal(Program.ymd(june26[4][6]), "2026-07-05"); // trailing fill to Sunday
+  const jan26 = Program.monthMatrix(2026, 0); // Jan 1 2026 is a Thursday
+  assert.equal(Program.ymd(jan26[0][0]), "2025-12-29"); // leading fill from Monday
+  assert.equal(jan26[0][3].getDate(), 1);
+  const feb27 = Program.monthMatrix(2027, 1); // Feb 2027 starts Mon, 28 days
+  assert.equal(feb27.length, 4);
+  assert.equal(Program.ymd(feb27[3][6]), "2027-02-28");
+  for (const row of feb27) assert.equal(row.length, 7);
+});
+
+test("parseRunSpec: parses fixed/range/plus, rejects junk", () => {
+  assert.deepEqual(Program.parseRunSpec("30"), { type: "fixed", min: 30 });
+  assert.deepEqual(Program.parseRunSpec("30-60"), { type: "range", lo: 30, hi: 60 });
+  assert.deepEqual(Program.parseRunSpec(" 60 – 90 "), { type: "range", lo: 60, hi: 90 }); // en-dash + spaces
+  assert.deepEqual(Program.parseRunSpec("120+"), { type: "plus", lo: 120 });
+  assert.equal(Program.parseRunSpec("fast 5k"), null);
+  assert.equal(Program.parseRunSpec(""), null);
+  assert.equal(Program.parseRunSpec("30-"), null);
+});
+
+test("runEditLabel: plain-ASCII inverse of parseRunSpec", () => {
+  assert.equal(Program.runEditLabel({ type: "fixed", min: 30 }), "30");
+  assert.equal(Program.runEditLabel({ type: "range", lo: 30, hi: 60 }), "30-60");
+  assert.equal(Program.runEditLabel({ type: "plus", lo: 120 }), "120+");
+  assert.equal(Program.runEditLabel({ type: "test", name: "6-Mile Test", targetMin: 60 }), "6-Mile Test");
+  for (const s of ["30", "30-60", "120+"]) {
+    assert.equal(Program.runEditLabel(Program.parseRunSpec(s)), s); // round-trip
+  }
+});
