@@ -654,7 +654,7 @@ function renderSetup(root){
     body=`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one).</p></div>
     ${enduranceEditorHtml()}`;
   }else if(setupTab==="connections"){
-    body=`<div class="empty"><h3>Connections</h3><p>Google Calendar live sync and Strava import land in the next update.<br>The app stays fully usable offline either way.</p></div>`;
+    body=connectionsHtml();
   }else{
     body=`<div class="group"><span class="eyebrow">General</span>
       <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
@@ -722,6 +722,59 @@ function renderSetup(root){
   }));
   const rb=root.querySelector("#resetBook");
   if(rb)rb.onclick=()=>{if(confirm("Discard all endurance edits and restore the book table?")){state.enduranceOverrides={};save();renderSetup(root);toast("Book values restored");}};
+  root.querySelectorAll("[data-conn]").forEach(b=>b.onclick=async()=>{
+    const key=b.dataset.conn;
+    const idEl=root.querySelector(`[data-cred="${key}"][data-cf="clientId"]`);
+    const secEl=root.querySelector(`[data-cred="${key}"][data-cf="clientSecret"]`);
+    const id=idEl.value.trim(),sec=secEl.value.trim();
+    try{
+      if(id||sec)syncStatus=await api.setCredentials(key,{clientId:id,clientSecret:sec});
+      b.textContent="Waiting for the browser…";b.disabled=true;
+      syncStatus=key==="google"?await api.connectGoogle():await api.connectStrava();
+      toast("Connected");
+      if(key==="google")schedulePush();else runStravaSync(true);
+    }catch(e){toast("Connect failed");if(api)syncStatus=await api.getSyncStatus().catch(()=>syncStatus);}
+    renderSetup(root);
+  });
+  root.querySelectorAll("[data-disc]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Disconnect? Tokens are forgotten. The Operator calendar stays in Google — delete it there if you want it gone."))return;
+    syncStatus=await api.disconnect(b.dataset.disc);renderSetup(root);
+  });
+  const pn=root.querySelector("#pushNow");
+  if(pn)pn.onclick=async()=>{pn.disabled=true;pn.textContent="Pushing…";
+    syncStatus=await api.pushPlan(Program.calendarSnapshot(state));
+    toast(syncStatus.google.lastError?"Push failed":"Plan pushed");renderSetup(root);};
+  const fn=root.querySelector("#fetchNow");
+  if(fn)fn.onclick=async()=>{fn.disabled=true;fn.textContent="Fetching…";await runStravaSync();renderSetup(root);};
+}
+
+function connectionsHtml(){
+  if(!api)return `<div class="empty"><h3>Desktop only</h3><p>Google Calendar and Strava sync run in the desktop app.<br>Everything else works right here in the browser.</p></div>`;
+  if(!syncStatus)return `<div class="empty"><p>Loading sync status…</p></div>`;
+  const ts=v=>v?new Date(v).toLocaleString():"—";
+  const provider=(key,p,title,hint)=>{
+    const dot=`<span class="dot ${p.connected?"done":""}" style="display:inline-block;vertical-align:middle;margin-right:7px"></span>`;
+    if(p.connected){
+      const when=key==="google"?p.lastSync:p.lastFetch;
+      return `<div class="group"><span class="eyebrow">${dot}${title} — connected</span>
+        <div class="field"><label>${key==="google"?"Mirror":"Activities"}<span class="hint">${key==="google"?"all-day plan events in the “Operator” calendar":"last ~14 days, matched to the plan"}</span></label>
+          <button class="btn ghost" data-disc="${key}">Disconnect</button></div>
+        <div class="field"><label>${key==="google"?"Last push":"Last fetch"}${p.lastError?`<span class="hint" style="color:var(--red)">${escapeHtml(p.lastError)}</span>`:""}</label>
+          <span class="mono" style="font-size:12px;color:var(--muted)">${ts(when)}</span></div>
+        <div class="setup-actions">${key==="google"
+          ?`<button class="btn" id="pushNow">Push plan now</button>`
+          :`<button class="btn" id="fetchNow">↻ Fetch activities</button>`}</div></div>`;
+    }
+    return `<div class="group"><span class="eyebrow">${dot}${title}</span>
+      <div class="field"><label>Client ID <span class="hint">${hint}</span></label>
+        <input type="text" style="width:300px;text-align:left" data-cred="${key}" data-cf="clientId" placeholder="${p.hasCredentials?"saved — leave blank to reuse":""}"></div>
+      <div class="field"><label>Client secret</label>
+        <input type="text" style="width:300px;text-align:left" data-cred="${key}" data-cf="clientSecret" placeholder="${p.hasCredentials?"saved — leave blank to reuse":""}"></div>
+      <div class="setup-actions"><button class="btn primary" data-conn="${key}">Connect ${title}</button></div>
+      ${p.lastError?`<p class="note" style="color:var(--red)">${escapeHtml(p.lastError)}</p>`:""}</div>`;
+  };
+  return provider("google",syncStatus.google,"Google Calendar","OAuth Desktop client — see README")
+       +provider("strava",syncStatus.strava,"Strava","API application — see README");
 }
 
 function enduranceEditorHtml(){
