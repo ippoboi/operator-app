@@ -379,6 +379,45 @@ function liftRowsHtml(session){
   }).join("");
 }
 
+function queueCardHtml(){
+  if(!api||!stravaQueue.length)return "";
+  let rows="";
+  stravaQueue.forEach((q,i)=>{
+    if(q.type==="missed"){
+      rows+=`<div class="lift-row"><div class="lift-meta"><div class="lift-name">Planned ${q.kind} not recorded</div>
+        <div class="lift-scheme">${q.dateStr} — no Strava activity found</div></div>
+        <div class="actions"><button class="btn ghost" data-qi="${i}" data-qa="skip">Mark skipped</button>
+        <button class="btn ghost" data-qi="${i}" data-qa="drop">Leave planned</button></div></div>`;
+      return;
+    }
+    const why={swap:"ride on a run day",restday:"no session this day",mismatch:"sport doesn't fit the plan",ambiguous:"several options this day"}[q.type];
+    (q.activities||[q.activity]).forEach(a=>{
+      const meta=`${q.dateStr} · ${escapeHtml(a.rawType)} · ${Math.round((a.movingSec||a.durationSec)/60)}′${a.distanceKm?` · ${a.distanceKm} km`:""}`;
+      let btns="";
+      if(q.type==="swap")btns+=`<button class="btn" data-qi="${i}" data-qa="swap" data-aid="${a.id}">Swap to bike &amp; match</button>`;
+      (q.candidates||[]).forEach(c=>{btns+=`<button class="btn" data-qi="${i}" data-qa="attach" data-aid="${a.id}" data-date="${c.dateStr}">Attach to ${c.kind}</button>`;});
+      btns+=`<button class="btn ghost" data-qi="${i}" data-qa="dismiss" data-aid="${a.id}">Not training</button>`;
+      rows+=`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(a.name)}</div>
+        <div class="lift-scheme">${meta} · ${why}</div></div><div class="actions">${btns}</div></div>`;
+    });
+  });
+  return `<div class="card" style="margin-top:18px"><div class="card-head"><h3>Strava review</h3><span class="meta">${stravaQueue.length} to resolve</span></div>${rows}</div>`;
+}
+function wireQueue(root){
+  root.querySelectorAll("[data-qa]").forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.qi;const q=stravaQueue[i];if(!q)return;
+    const acts=q.activities||[q.activity];
+    const act=b.dataset.aid?acts.find(a=>a&&String(a.id)===b.dataset.aid):null;
+    const qa=b.dataset.qa;
+    if(qa==="dismiss"&&act)state.dismissedActivities.push(act.id);
+    else if(qa==="skip")state.status[q.dateStr]="skipped";
+    else if(qa==="swap"&&act){state.sessionSwap[q.dateStr]="bike";state.status[q.dateStr]="done";state.activities[q.dateStr]=act;}
+    else if(qa==="attach"&&act){state.status[b.dataset.date]="done";state.activities[b.dataset.date]=act;}
+    stravaQueue.splice(i,1);
+    save();render();
+  });
+}
+
 function renderToday(root){
   const sessions=buildSessions();const cur=currentSession(sessions);
   if(cur&&cur.kind==="run"){renderTodayRun(root,cur);return;}
@@ -426,13 +465,16 @@ function renderToday(root){
       <button class="btn primary" id="icsBtn">Add program to calendar</button>
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-    </div>`;
+      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+    </div>${queueCardHtml()}`;
   const rp=root.querySelector("#rotpick");
   if(rp)rp.addEventListener("click",e=>{const b=e.target.closest("[data-rot]");if(!b)return;state.sessionPick[cur.dateStr]=b.dataset.rot;save();render();});
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
   root.querySelector("#icsBtn").onclick=exportICS;
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
+  wireQueue(root);
 }
 
 function renderTodayRun(root,cur){
@@ -473,11 +515,14 @@ function renderTodayRun(root,cur){
       <button class="btn" id="swapBtn">${sport==="bike"?"Back to run":"Swap to bike"}</button>
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-    </div>`;
+      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+    </div>${queueCardHtml()}`;
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
   root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
+  wireQueue(root);
 }
 
 function chipFor(s){
@@ -499,7 +544,7 @@ function renderCalendar(root){
   const tStr=ymd(todayDate());
   const monthName=new Date(c.y,c.m,1).toLocaleString("en",{month:"long",year:"numeric"});
   const t=Program.template(state);
-  let grid=`<div class="cal-head"><button class="btn ghost" id="calPrev">‹ Prev</button><span class="cal-title">${monthName}</span><button class="btn ghost" id="calNext">Next ›</button></div>
+  let grid=`<div class="cal-head"><button class="btn ghost" id="calPrev">‹ Prev</button><span class="cal-title">${monthName}</span><span style="display:flex;gap:8px">${stravaConnected()?`<button class="btn ghost" id="calSync">↻</button>`:""}<button class="btn ghost" id="calNext">Next ›</button></span></div>
     <div class="cal-grid cal-dow"><span></span>${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<span>${d}</span>`).join("")}</div>`;
   weeks.forEach(row=>{
     const rowSess=row.map(d=>byDate[ymd(d)]||[]).flat();
@@ -517,6 +562,7 @@ function renderCalendar(root){
   root.innerHTML=`<div class="view-title">Calendar</div><div class="sub">${state.weeks} weeks · ${t.label}${t.endurance?` · runs ${state.runDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")}`:""}</div>${grid}<div id="calDetail" style="margin-top:18px">${detail}</div>`;
   root.querySelector("#calPrev").onclick=()=>shiftCalMonth(-1);
   root.querySelector("#calNext").onclick=()=>shiftCalMonth(1);
+  const cs=root.querySelector("#calSync");if(cs)cs.onclick=()=>runStravaSync();
   root.querySelectorAll(".cal-cell.has").forEach(cell=>cell.onclick=()=>{calSel=calSel===cell.dataset.date?null:cell.dataset.date;render();});
   wireCalDetail(root);
 }
