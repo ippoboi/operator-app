@@ -187,3 +187,17 @@ test("operator6 unchanged: weekSpec mirrors CYCLE", () => {
   assert.equal(Program.weekSpec(s, 4).pct, 0.75);
   assert.equal(Program.weekSpec(s, 7).pct, 0.70); // wave repeats past template length
 });
+
+test("weekSpec returns copies — mutating a result never alters the registry", () => {
+  const s = capacityState();
+  const spec = Program.weekSpec(s, 4);
+  spec.pct = 999;
+  assert.equal(Program.weekSpec(s, 4).pct, 0.40);
+  assert.equal(Program.weekSpec(s, 8).pct, 0.40);
+});
+
+test("buildSessions propagates deload/optional onto capacity deload-week sessions", () => {
+  const x = Program.buildSessions(capacityState()).find(x => x.week === 4 && x.kind === "lift");
+  assert.equal(x.deload, true);
+  assert.equal(x.optional, true);
+});

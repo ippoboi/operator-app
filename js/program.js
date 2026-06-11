@@ -40,7 +40,7 @@ const Program = (() => {
     const t = template(state);
     const raw = t.lift[(week - 1) % t.weeks];
     if (raw == null) return null;
-    return raw;
+    return Object.assign({}, raw);
   }
 
   /* ---- dates & rounding ---- */
