@@ -99,7 +99,7 @@ Sessions are derived (never stored): `buildSessions()` walks `weeks` from `start
 
 ## Design language
 
-Lean, instrument-panel minimalism. Near-black charcoal (`#0b0c0e`), off-white text, a single periwinkle-blue accent (`#6b8afd`); green/red used only for done/skipped status. Sidebar navigation (Today / Program / Progress / Setup), monospace tabular numerals for all weights (the weight is the hero), system fonts only (offline-safe), generous whitespace, dark/light toggle. No marketing chrome.
+Lean, instrument-panel minimalism. Near-black charcoal (`#0b0c0e`), off-white text, a periwinkle-blue accent (`#6b8afd`) plus teal for endurance and amber for deload/test; green/red used only for done/skipped status. Sidebar navigation (Today / Calendar / Progress / Setup — Calendar is a month grid with session chips and an inline detail panel; Setup is split into inline tabs), monospace tabular numerals for all weights (the weight is the hero), system fonts only (offline-safe), generous whitespace, dark/light toggle. No marketing chrome.
 
 ---
 
