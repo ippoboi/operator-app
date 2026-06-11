@@ -13,6 +13,7 @@
     --green:#5fb07a; --green-soft:rgba(95,176,122,.14);
     --red:#cf6f63; --red-soft:rgba(207,111,99,.14);
     --amber:#d6a441;
+    --teal:#5fd3c2;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --r:11px;
@@ -25,6 +26,7 @@
     --green:#3f8a52; --green-soft:rgba(63,138,82,.11);
     --red:#b6534a; --red-soft:rgba(182,83,74,.11);
     --amber:#a9791a;
+    --teal:#0e8a78;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -166,6 +168,9 @@
     font-family:var(--mono);font-size:14px;background:var(--inset);border:1px solid var(--line);
     color:var(--text);border-radius:8px;padding:9px 11px;width:130px;text-align:right}
   input:focus{outline:none;border-color:var(--accent)}
+  select{font-family:var(--mono);font-size:13px;background:var(--inset);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px 11px}
+  select:focus{outline:none;border-color:var(--accent)}
+  .kg.run{color:var(--teal)}
   .lift-cfg{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
   .lift-cfg:last-child{border-bottom:none}
   .lift-cfg input[type="text"]{flex:1;text-align:left;width:auto;min-width:0}
@@ -283,6 +288,7 @@ function greeting(){const h=new Date().getHours();const p=h<12?"morning":h<18?"a
 
 function renderToday(root){
   const sessions=buildSessions();const cur=currentSession(sessions);
+  if(cur&&cur.kind==="run"){renderTodayRun(root,cur);return;}
   if(!hasAnyTM()||!cur){
     root.innerHTML=`<div class="greet">${escapeHtml(greeting())}</div>
       <div class="empty"><h3>No numbers yet</h3><p>Add your training maxes in Setup and today's targets land here.</p>
@@ -323,7 +329,7 @@ function renderToday(root){
     </div>
     ${rotPicker}
     <div class="card">
-      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
+      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}${cur.optional?' · <span style="color:var(--amber)">Deload — do not add plates</span>':""}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
       ${rows}
     </div>
     <div class="readiness" id="readiness">
@@ -345,22 +351,76 @@ function renderToday(root){
   root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
 }
 
+function renderTodayRun(root,cur){
+  const isToday=cur.dateStr===ymd(todayDate());
+  const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
+  const sport=Program.sportFor(state,cur);
+  const st=state.status[cur.dateStr]||null;
+  const r=state.readiness[cur.dateStr]||null;
+  const done=Object.values(state.status).filter(v=>v==="done").length;
+  const label=Program.runLabel(cur.run);
+  const title=cur.run.type==="test"?cur.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
+  const hint=cur.run.type==="test"?("Benchmark — target under "+cur.run.targetMin+":00, flat course.")
+    :cur.run.type==="fixed"?"Deload pace. Conversational, flat terrain — recharge, don't train."
+    :"Stay in the low aerobic range. Alternate easy/hard: long last time → go shorter today.";
+  const nudges={green:`<b>Green.</b> Run it as prescribed.`,amber:`<b>Amber.</b> Bottom of the range, easy pace.`,red:`<b>Red.</b> Shortest option, or swap to bike / skip.`};
+  root.innerHTML=`
+    <div class="greet">${escapeHtml(greeting())}</div>
+    <div class="sub">You're in <b>week ${cur.week}</b> of your block. ${isToday?"Today":"Next session ("+dateLabel+")"}: <b>${escapeHtml(title)} ${escapeHtml(label)}</b>.</div>
+    <div class="stats">
+      <div class="stat a"><div class="n mono">${pad(cur.week)}</div><div class="l">Current week</div></div>
+      <div class="stat am"><div class="n mono">${escapeHtml(label)}</div><div class="l">Prescribed</div></div>
+      <div class="stat g"><div class="n mono">${done}</div><div class="l">Sessions done</div></div>
+      <div class="stat"><div class="n mono">${d.getDate()} ${d.toLocaleString("en",{month:"short"})}</div><div class="l">${isToday?"Today":"Next up"}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>${isToday?"Today's session":"Next session"}</h3><span class="meta">${dateLabel}</span></div>
+      <div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(title)}</div>
+        <div class="lift-scheme">${escapeHtml(hint)}</div></div>
+        <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>
+    </div>
+    <div class="readiness" id="readiness">
+      <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
+      <button class="rb" data-r="amber" ${r==="amber"?'data-on="amber"':""}>Amber</button>
+      <button class="rb" data-r="red" ${r==="red"?'data-on="red"':""}>Red</button>
+    </div>
+    <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
+    <div class="actions">
+      <button class="btn" id="swapBtn">${sport==="bike"?"Back to run":"Swap to bike"}</button>
+      <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
+      <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
+    </div>`;
+  root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
+  root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
+  root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
+  root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
+}
+
 function renderProgram(root){
   const sessions=buildSessions();
   if(!sessions.length){root.innerHTML=`<div class="empty"><p>Set a start date in Setup.</p></div>`;return;}
   const cur=currentSession(sessions);const curWeek=cur?cur.week:1;const tStr=ymd(todayDate());
   const byWeek={};sessions.forEach(s=>{(byWeek[s.week]=byWeek[s.week]||[]).push(s);});
-  let html=`<div class="view-title">Program</div><div class="sub">${state.weeks} weeks · ${state.liftDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")} · 6-week peaking wave (70·80·90 / deload 75 / 85·95)</div>`;
+  const t=Program.template(state);
+  let html=`<div class="view-title">Program</div><div class="sub">${state.weeks} weeks · ${t.label}${t.endurance?` · runs ${state.runDays.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("/")}`:""}</div>`;
   Object.keys(byWeek).map(Number).sort((a,b)=>a-b).forEach(wk=>{
-    const ss=byWeek[wk];const c=ss[0];const isC=wk===curWeek;
+    const ss=byWeek[wk];const isC=wk===curWeek;const sp=weekSpec(wk);
     if((wk-1)%Program.template(state).weeks===0 && wk>1){
       const blk=blockOf(wk)+1;
       html+=`<div class="block-sep">Block ${blk} · projected — assumes the TM step-up after block ${blk-1}</div>`;
     }
-    html+=`<div class="wk ${isC?"cur":""}"><div class="wk-head"><span class="wk-no">WK ${pad(wk)}</span><span class="wk-pct">${Math.round(c.pct*100)}%</span>${isC?'<span class="cur-badge">CURRENT</span>':""}${c.deload?'<span class="cur-badge" style="color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)">DELOAD</span>':""}<span class="wk-scheme">${c.sets}×${c.reps}</span></div>`;
+    const headPct=sp?`<span class="wk-pct">${Math.round(sp.pct*100)}%</span>`:`<span class="wk-pct" style="color:var(--amber)">TAPER</span>`;
+    const headScheme=sp?`<span class="wk-scheme">${sp.sets}×${sp.reps}</span>`:`<span class="wk-scheme">runs only</span>`;
+    html+=`<div class="wk ${isC?"cur":""}"><div class="wk-head"><span class="wk-no">WK ${pad(wk)}</span>${headPct}${isC?'<span class="cur-badge">CURRENT</span>':""}${sp&&sp.deload?'<span class="cur-badge" style="color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)">DELOAD</span>':""} ${headScheme}</div>`;
     ss.forEach(s=>{
-      const tg=sessionTargets(s).filter(t=>t.target!=null||t.bw);
-      const loads=tg.length?tg.map(t=>t.bw?shortName(t.ref.name)+" BW":shortName(t.ref.name)+" "+fmt(t.target)+(t.ref.type==="db"?"/h":"")).join("   ·   "):"set training maxes →";
+      let loads;
+      if(s.kind==="run"){
+        const sport=Program.sportFor(state,s);
+        loads=(sport==="bike"?"LSS Bike ":"LSS Run ")+Program.runLabel(s.run);
+      }else{
+        const tg=sessionTargets(s).filter(t=>t.target!=null||t.bw);
+        loads=tg.length?tg.map(t=>t.bw?shortName(t.ref.name)+" BW":shortName(t.ref.name)+" "+fmt(t.target)+(t.ref.type==="db"?"/h":"")).join("   ·   "):"set training maxes →";
+      }
       const stt=state.status[s.dateStr]||"";const dotCls=s.dateStr===tStr?"today":stt;
       html+=`<div class="sess" data-date="${s.dateStr}"><span class="dot ${dotCls}"></span><span class="sess-date mono">${DOW[s.date.getDay()]} ${s.date.getDate()} ${s.date.toLocaleString("en",{month:"short"})}</span><span class="sess-loads">${escapeHtml(loads)}</span></div>`;
     });
@@ -384,6 +444,10 @@ chart=svgChart(pts,Program.template(state).weeks);}
     else if(lift){chart=`<div class="empty"><h3>${escapeHtml(shortName(lift.name))} — bodyweight</h3><p>No loaded progression to chart yet. Add a training max once you start adding weight (a belt).</p></div>`;}
   }
   const chips=lifts.map(l=>`<button class="chip" data-lift="${l.id}" aria-pressed="${l.id===window.__pLift}">${escapeHtml(shortName(l.name))}</button>`).join("");
+  const tpl=Program.template(state);
+  const noteTxt=tpl.id==="capacity12"
+    ?`Capacity runs 4-week blocks (70·80·90 / 40% deload); week 12 is a taper with no lifting. The TM steps every 4 weeks — +5 kg lower-body, +2.5 kg upper — so weeks 5+ <b>project</b> those step-ups.`
+    :`Weeks 1–6 are one block (70·80·90 / 75 deload / 85·95). Beyond week 6 the chart <b>projects</b> the next blocks assuming each lift's TM steps up — +5 kg on lower-body lifts, +2.5 kg on upper — set per lift in Setup.`;
   root.innerHTML=`<div class="view-title">Progress</div><div class="sub">Tracking across your ${state.weeks}-week block.</div>
     <div class="stats">
       <div class="stat g"><div class="n mono">${done}</div><div class="l">Sessions done</div></div>
@@ -394,7 +458,7 @@ chart=svgChart(pts,Program.template(state).weeks);}
     <div class="chart-head"><span class="eyebrow">Prescribed top set across weeks</span><span class="legend"><span class="lg lg-solid"></span>current<span class="lg lg-dash"></span>projected</span></div>
     <div class="chart-head">${chips}</div>
     <div class="chartbox">${chart}</div>
-    <p class="note">Weeks 1–6 are one block (70·80·90 / 75 deload / 85·95). Beyond week 6 the chart <b>projects</b> the next blocks assuming each lift's TM steps up — +5 kg on lower-body lifts, +2.5 kg on upper — set per lift in Setup.</p>`;
+    <p class="note">${noteTxt}</p>`;
   root.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{window.__pLift=c.dataset.lift;renderProgress(root);});
   wireChart(root);
 }
@@ -446,14 +510,17 @@ function renderSetup(root){
     <div class="group"><span class="eyebrow">Program</span>
       <div class="field"><label>Your name <span class="hint">shown in the greeting</span></label><input type="text" value="${escapeAttr(state.displayName||"")}" data-k="displayName"></div>
       <div class="field"><label>Week 1 start <span class="hint">pick the Monday</span></label><input type="date" value="${state.startDate}" data-k="startDate"></div>
+      <div class="field"><label>Template <span class="hint">lifting wave &amp; endurance</span></label>
+        <select data-template>${Object.values(Program.TEMPLATES).map(t=>`<option value="${t.id}" ${state.template===t.id?"selected":""}>${t.label}</option>`).join("")}</select></div>
       <div class="field"><label>Length <span class="hint">weeks</span></label><input type="number" value="${state.weeks}" min="3" max="52" data-k="weeks"></div>
       <div class="field"><label>Plate increment <span class="hint">kg rounding</span></label><input type="number" value="${state.increment}" step="0.5" data-k="increment"></div>
       <div class="field"><label>Bodyweight <span class="hint">for pull-up added load</span></label><input type="number" value="${state.bodyweight==null?"":state.bodyweight}" step="0.5" placeholder="—" data-k="bodyweight"></div>
     </div>
     <div class="group"><span class="eyebrow">Lift days</span><div class="days" id="days">${dayBtns}</div></div>
+    ${Program.template(state).endurance?`<div class="group"><span class="eyebrow">Run days (LSS)</span><div class="days" id="runDays">${[1,2,3,4,5,6,0].map(d=>`<button class="day" data-day="${d}" aria-pressed="${state.runDays.includes(d)}">${DOW[d][0]}</button>`).join("")}</div><p class="note">Three slots per week, matched in order to the book's table (slot 3 is the long one). Edits to individual weeks come with the Endurance tab in the next release.</p></div>`:""}
     <div class="group"><span class="eyebrow">Cluster — toggle, rename, Every/Rotate, training max (kg)</span>${liftRows}<p class="note">“Every” lifts run every session. “Rotate” lifts share one slot — set the weekly pattern below.</p></div>
     ${rotSchedHtml}
-    <div class="group"><span class="eyebrow">Block step — kg added to each TM every 6-week block</span>${stepRows}</div>
+    <div class="group"><span class="eyebrow">Block step — kg added to each TM per block (every ${Program.template(state).tmStepEvery} weeks)</span>${stepRows}</div>
     <div class="group"><span class="eyebrow">Calendar</span>
       <div class="field"><label>Session time</label><input type="time" value="${state.sessionTime}" data-k="sessionTime"></div>
       <div class="field"><label>Duration <span class="hint">minutes</span></label><input type="number" value="${state.durationMin}" data-k="durationMin"></div>
@@ -472,7 +539,15 @@ function renderSetup(root){
     else if(k==="bodyweight")v=v===""?null:parseFloat(v);
     state[k]=v;save();render();
   }));
-  root.querySelector("#days").addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
+  const tplSel=root.querySelector("[data-template]");
+  if(tplSel)tplSel.addEventListener("change",()=>{
+    const id=tplSel.value;const tpl=Program.TEMPLATES[id];
+    if(!confirm(`Switch to ${tpl.label}? Done/skipped history is kept; the wave and schedule change.`)){renderSetup(root);return;}
+    state.template=id;state.weeks=tpl.weeks;save();render();toast(tpl.label);
+  });
+  root.querySelector("#days").addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.runDays&&state.runDays.includes(d)){toast("Already a run day");return;}const i=state.liftDays.indexOf(d);if(i>=0){if(state.liftDays.length>1)state.liftDays.splice(i,1);}else state.liftDays.push(d);save();renderSetup(root);});
+  const rd=root.querySelector("#runDays");
+  if(rd)rd.addEventListener("click",e=>{const b=e.target.closest(".day");if(!b)return;const d=Number(b.dataset.day);if(state.liftDays.includes(d)){toast("Already a lift day");return;}const i=state.runDays.indexOf(d);if(i>=0){if(state.runDays.length>1)state.runDays.splice(i,1);}else state.runDays.push(d);save();renderSetup(root);});
   root.querySelectorAll(".lift-cfg").forEach(row=>{const id=row.dataset.id;const lift=state.lifts.find(l=>l.id===id);
     row.querySelector("[data-toggle]").onclick=()=>{lift.enabled=!lift.enabled;save();renderSetup(root);};
     row.querySelector("[data-role]").onclick=()=>{lift.role=(lift.role==="rotating")?"core":"rotating";save();renderSetup(root);};
@@ -494,12 +569,20 @@ function buildICS(){
   const sessions=buildSessions();const[hh,mm]=state.sessionTime.split(":").map(Number);
   const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Operator//TB//EN","CALSCALE:GREGORIAN"];const now=new Date();
   sessions.forEach(s=>{
-    const tg=sessionTargets(s);const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
+    const so=new Date(s.date);so.setHours(hh,mm,0,0);const eo=new Date(so.getTime()+state.durationMin*60000);
     const f=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"T"+pad(d.getHours())+pad(d.getMinutes())+"00";
-    const pl=Math.round(s.pct*100);
-    const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
-    const desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
-    lines.push("BEGIN:VEVENT","UID:operator-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS("Operator — Week "+s.week+" ("+pl+"%)"),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
+    let summary,desc;
+    if(s.kind==="run"){
+      const sport=Program.sportFor(state,s)==="bike"?"LSS Bike":"LSS Run";
+      summary="Operator — "+sport+" "+Program.runLabel(s.run);
+      desc="Week "+s.week+" · "+sport+" "+Program.runLabel(s.run)+"\n\nLow aerobic range, flat terrain.";
+    }else{
+      const tg=sessionTargets(s);const pl=Math.round(s.pct*100);
+      const body=tg.map(t=>{if(t.target==null)return t.ref.name+": set TM";if(t.ref.type==="pullup")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg"+(t.added!=null?(" (+"+fmt(t.added)+" added)"):"");if(t.ref.type==="db")return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg/hand";return t.ref.name+": "+s.sets+"×"+s.reps+" @ "+fmt(t.target)+" kg";}).join("\n");
+      summary="Operator — Week "+s.week+" ("+pl+"%)"+(s.optional?" · Deload":"");
+      desc="Week "+s.week+" · "+pl+"% · "+s.sets+"×"+s.reps+"\n\n"+body+"\n\nCuff warmup before pressing. Readiness red → cap intensity.";
+    }
+    lines.push("BEGIN:VEVENT","UID:operator-"+s.kind+"-"+s.dateStr+"@local","DTSTAMP:"+stamp(now),"DTSTART:"+f(so),"DTEND:"+f(eo),"SUMMARY:"+escICS(summary),"DESCRIPTION:"+escICS(desc),"END:VEVENT");
   });
   lines.push("END:VCALENDAR");return lines.join("\r\n");
 }
