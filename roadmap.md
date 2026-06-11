@@ -8,15 +8,20 @@ V.1 — complete
 - [x] Calendar view not just list WoW
 - [x] Improve the settings/setup
 
-V.2
+V.2 — rebuild
 
-- Add account/auth?
+- Migrate to Next.js, static export wrapped in Electron
+- Port program.js to program.ts, keep the tests
+- Refresh the design
+- Unify the session card into one component
+- Add a backend with a database
+- Add account/auth
 - API WHOOP data
 - Add AI assistant
-- Other TB templates (Op/Pro, Op/DUP, Fighter, etc.).
 
 V.n
 
-- Be able to customize workouts through exercises
-- Be able to track nutrition
+- Track nutrition
+- Customize workouts through exercises
+- Other TB templates (Op/Pro, Op/DUP, Fighter, etc.)
 - Mobile app
