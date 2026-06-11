@@ -284,6 +284,9 @@ function render(){
   else if(activeTab==="setup")renderSetup(v);
 }
 
+/* counts only status entries whose date still has a session — template switches can orphan keys */
+function statusCount(sessions,val){const live=new Set(sessions.map(s=>s.dateStr));return Object.entries(state.status).filter(([d,v])=>v===val&&live.has(d)).length;}
+
 function greeting(){const h=new Date().getHours();const p=h<12?"morning":h<18?"afternoon":"evening";return "Good "+p+(state.displayName?", "+state.displayName:"");}
 
 function renderToday(root){
@@ -299,7 +302,7 @@ function renderToday(root){
   const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
   const pct=Math.round(cur.pct*100);
   const tg=sessionTargets(cur);
-  const done=Object.values(state.status).filter(v=>v==="done").length;
+  const done=statusCount(sessions,"done");
   const lifts=sessionLifts(cur).map(l=>shortName(l.name)).join(", ");
   const rot=rotatingLifts();const ch=chosenRotating(cur);
   const rotPicker = rot.length>1 ? `<div class="rotpick" id="rotpick"><span class="rotpick-label">This session</span><div class="seg">${rot.map(l=>`<button class="seg-btn" data-rot="${l.id}" aria-pressed="${ch&&ch.id===l.id}">${escapeHtml(shortName(l.name))}</button>`).join("")}</div></div>` : "";
@@ -357,7 +360,7 @@ function renderTodayRun(root,cur){
   const sport=Program.sportFor(state,cur);
   const st=state.status[cur.dateStr]||null;
   const r=state.readiness[cur.dateStr]||null;
-  const done=Object.values(state.status).filter(v=>v==="done").length;
+  const done=statusCount(buildSessions(),"done");
   const label=Program.runLabel(cur.run);
   const title=cur.run.type==="test"?cur.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
   const hint=cur.run.type==="test"?("Benchmark — target under "+cur.run.targetMin+":00, flat course.")
@@ -432,8 +435,8 @@ function renderProgram(root){
 
 function renderProgress(root){
   const sessions=buildSessions();const total=sessions.length;
-  const done=Object.values(state.status).filter(v=>v==="done").length;
-  const skipped=Object.values(state.status).filter(v=>v==="skipped").length;
+  const done=statusCount(sessions,"done");
+  const skipped=statusCount(sessions,"skipped");
   const pctDone=total?Math.round(done/total*100):0;
   const lifts=enabledLifts();
   if(!window.__pLift||!lifts.find(l=>l.id===window.__pLift))window.__pLift=((lifts.find(l=>l.tm!=null&&!isNaN(l.tm))||lifts[0])||{}).id||null;
