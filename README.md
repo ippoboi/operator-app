@@ -1,6 +1,6 @@
 # Operator
 
-A local Tactical Barbell **Operator** companion. Set a training max per lift once; it hands you each session's weights in kg, tracks the 6-week wave (with block projection), rotates lifts on a fixed weekly pattern, and exports an `.ics` to Apple/Google Calendar. No APIs, no accounts, no network — your data stays on your machine.
+A local Tactical Barbell companion. Set a training max per lift once; it hands you each session's weights in kg, rotates lifts on a fixed weekly pattern, and exports an `.ics` to Apple/Google Calendar. Two templates: **Operator** (6-week peaking wave with block projection) and **Capacity** (Green Protocol 12 weeks: lifting + LSS runs, 40% deloads on weeks 4/8, week-12 taper ending in the 6-Mile Test, run→bike swap per day). No APIs, no accounts, no network — your data stays on your machine.
 
 ## Build the native app
 
@@ -25,8 +25,13 @@ Build only one platform with `npm run dist:mac` / `dist:win` / `dist:linux` (cro
 - `npm start` — launches the Electron window directly.
 - Double-click `index.html` — runs standalone in any browser, no install.
 
+## Tests
+- `npm test` — runs the program-logic suite (`node --test`, no dependencies).
+
 ## Files
-- `index.html` — the whole app (UI + logic, self-contained)
+- `index.html` — UI (markup + CSS + render logic)
+- `js/program.js` — pure program math (templates, sessions, loads); also what the tests import
+- `tests/program.test.js` — program-logic tests
 - `main.js` — Electron window
 - `build/icon.icns` · `icon.ico` · `icon.png` — the barbell app icon
 - `assets/logo.svg` — source logo (vector)
