@@ -62,3 +62,83 @@ test("rotation: rotSchedule fixes the weekly pattern; sessionPick overrides one 
   assert.equal(Program.chosenRotating(s, mon).id, "sdl");
   assert.equal(Program.sessionLifts(s, mon).length, 3); // 2 core + 1 rotating
 });
+
+// ── New coverage tests ──────────────────────────────────────────────────────
+
+test("currentSession: empty array returns null", () => {
+  const s = baseState();
+  assert.equal(Program.currentSession(s, []), null);
+});
+
+test("currentSession: all-past sessions returns last session", () => {
+  const s = baseState({ startDate: "2020-01-06" }); // years in the past
+  const sess = Program.buildSessions(s);
+  const last = sess[sess.length - 1];
+  assert.equal(Program.currentSession(s, sess).dateStr, last.dateStr);
+});
+
+test("currentSession: all-future sessions returns first session", () => {
+  const s = baseState({ startDate: "2090-01-07" }); // Monday far in the future
+  const sess = Program.buildSessions(s);
+  assert.equal(Program.currentSession(s, sess).dateStr, sess[0].dateStr);
+});
+
+test("currentSession: session dated exactly today is returned directly", () => {
+  const todayStr = Program.ymd(Program.todayDate());
+  const fakeSessions = [
+    { dateStr: "1999-01-01" },
+    { dateStr: todayStr },
+    { dateStr: "2099-01-01" },
+  ];
+  assert.equal(Program.currentSession({}, fakeSessions).dateStr, todayStr);
+});
+
+test("targetFor: null TM on barbell returns target:null, bw:false", () => {
+  const s = Program.defaults();
+  const fsq = s.lifts.find(l => l.id === "fsq"); // type "barbell", tm:null
+  const result = Program.targetFor(s, fsq, 0.70, 1);
+  assert.equal(result.target, null);
+  assert.equal(result.bw, false);
+});
+
+test("targetFor: null TM on pullup returns target:null, bw:true", () => {
+  const s = Program.defaults();
+  const wpu = s.lifts.find(l => l.id === "wpu"); // type "pullup", tm:null
+  const result = Program.targetFor(s, wpu, 0.70, 1);
+  assert.equal(result.target, null);
+  assert.equal(result.bw, true);
+});
+
+test("rotForWeekday: positional fallback when rotSchedule is empty", () => {
+  // rot = [sdl, wpu] (rotating lifts in defaults order)
+  // days = [1, 3, 5]; pos%2: 1->0(sdl), 3->1(wpu), 5->0(sdl)
+  const s = baseState({ rotSchedule: {} });
+  const rot = Program.rotatingLifts(s);
+  const days = s.liftDays.slice().sort((a, b) => a - b); // [1,3,5]
+  for (const dow of days) {
+    const pos = days.indexOf(dow);
+    const expected = rot[pos % rot.length];
+    assert.equal(Program.rotForWeekday(s, dow).id, expected.id);
+  }
+});
+
+test("hasAnyTM: false when all TMs null (defaults), true on baseState", () => {
+  assert.equal(Program.hasAnyTM(Program.defaults()), false);
+  assert.equal(Program.hasAnyTM(baseState()), true);
+});
+
+test("projected flag: week 7 is projected, week 1 is not", () => {
+  const s = baseState({ weeks: 12 });
+  const fsq = s.lifts.find(l => l.id === "fsq");
+  assert.equal(Program.targetFor(s, fsq, 0.70, 7).projected, true);
+  assert.equal(Program.targetFor(s, fsq, 0.70, 1).projected, false);
+});
+
+test("sessionTargets: Monday session returns [fsq, dbb, wpu] in order", () => {
+  const s = baseState();
+  const sess = Program.buildSessions(s);
+  const mon = sess[0]; // first session is Monday 2026-01-05
+  assert.equal(mon.date.getDay(), 1); // verify it is Monday
+  const targets = Program.sessionTargets(s, mon);
+  assert.deepEqual(targets.map(t => t.ref.id), ["fsq", "dbb", "wpu"]);
+});
