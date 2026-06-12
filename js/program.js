@@ -135,7 +135,7 @@ const Program = (() => {
       template: "operator6", theme: "dark", displayName: "Dimitar", startDate: ymd(monday), weeks: 6,
       increment: 2.5, bodyweight: null,
       liftDays: [1, 3, 5],
-      runDays: [2, 4, 6], enduranceOverrides: {}, sessionSwap: {},
+      runDays: [2, 4, 6], enduranceOverrides: {}, sessionSwap: {}, sessionMove: {},
       activities: {}, dismissedActivities: [],
       lifts: [
         { id: "fsq", name: "Front Squat", type: "barbell", enabled: true, tm: null, role: "core", blockStep: 5 },
@@ -177,6 +177,13 @@ const Program = (() => {
         });
       }
     }
+    /* one-off reschedules: relocate a session to another date (keeping its prescribed
+       week/load) without disturbing the rest of the program. Keyed "kind:dateStr". */
+    const moves = state.sessionMove || {};
+    out.forEach(s => {
+      const to = moves[s.kind + ":" + s.dateStr];
+      if (to) { s.movedFrom = s.dateStr; s.date = parseYMD(to); s.dateStr = to; }
+    });
     out.sort((a, b) => a.date - b.date || (a.kind === "lift" ? -1 : 1));
     out.forEach((s, i) => { s.idx = i; });
     return out;
@@ -283,7 +290,7 @@ const Program = (() => {
     const s = Object.assign(defaults(), old, {
       template: "operator6",
       runDays: [2, 4, 6],
-      enduranceOverrides: {}, sessionSwap: {},
+      enduranceOverrides: {}, sessionSwap: {}, sessionMove: {},
       activities: {}, dismissedActivities: [],
     });
     delete s.sessionTime; delete s.durationMin;

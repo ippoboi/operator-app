@@ -7,6 +7,7 @@ V.1 — complete
 - [x] Way to compare what was done from Strava Description
 - [x] Calendar view not just list WoW
 - [x] Improve the settings/setup
+- [x] Link a Strava activity to a workout planned on a different day, and reschedule (leave / skip / move) the session it displaces
 
 V.2 — rebuild
 

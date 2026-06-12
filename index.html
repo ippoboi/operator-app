@@ -301,6 +301,7 @@ let state=load(); let activeTab="today";
 const ipc=window.api||null;
 let syncStatus=null;   // last getSyncStatus() result
 let stravaQueue=[];    // review-queue items from the last fetch (in-memory; re-derived each sync)
+let displacedPrompt=null; // {dateStr} — after a cross-day attach, what to do with that day's displaced plan
 let pushT=null;
 function googleConnected(){return !!(syncStatus&&syncStatus.google&&syncStatus.google.connected);}
 function stravaConnected(){return !!(syncStatus&&syncStatus.strava&&syncStatus.strava.connected);}
@@ -349,6 +350,15 @@ function el(h){const t=document.createElement("template");t.innerHTML=h.trim();r
 function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 function escapeAttr(s){return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function shortName(n){return n.replace("Front Squat","F.Squat").replace("Sumo Deadlift","Sumo DL").replace("Weighted Pull-up","Pull-up").replace("DB Bench Press","DB Bench");}
+function shortDate(ds){const d=parseYMD(ds);return DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});}
+function sessionLabel(s){return s.kind==="lift"?"🏋 strength":(Program.sportFor(state,s)==="bike"?"🚴 bike":"🏃 run");}
+/* first date after `fromDateStr` with no planned session — the move-forward target */
+function nextOpenDay(fromDateStr){
+  const taken=new Set(buildSessions().map(s=>s.dateStr));
+  let d=addDays(parseYMD(fromDateStr),1);
+  for(let i=0;i<28;i++){const ds=ymd(d);if(!taken.has(ds))return ds;d=addDays(d,1);}
+  return null;
+}
 
 function renderNav(){
   const items=[["today","Today"],["calendar","Calendar"],["progress","Progress"]];
@@ -425,13 +435,32 @@ function queueCardHtml(){
       const meta=`${q.dateStr} · ${escapeHtml(a.rawType)} · ${Math.round((a.movingSec||a.durationSec)/60)}′${a.distanceKm?` · ${a.distanceKm} km`:""}`;
       let btns="";
       if(q.type==="swap")btns+=`<button class="btn" data-qi="${i}" data-qa="swap" data-aid="${a.id}">Swap to bike &amp; match</button>`;
-      (q.candidates||[]).forEach(c=>{btns+=`<button class="btn" data-qi="${i}" data-qa="attach" data-aid="${a.id}" data-date="${c.dateStr}">Attach to ${c.kind}</button>`;});
+      (q.candidates||[]).forEach(c=>{
+        const lbl=c.crossDay?`Link to ${c.kind} · ${shortDate(c.dateStr)}`:`Attach to ${c.kind}`;
+        btns+=`<button class="btn" data-qi="${i}" data-qa="attach" data-aid="${a.id}" data-date="${c.dateStr}">${lbl}</button>`;
+      });
       btns+=`<button class="btn ghost" data-qi="${i}" data-qa="dismiss" data-aid="${a.id}">Not training</button>`;
       rows+=`<div class="lift-row"><div class="lift-meta"><div class="lift-name">${escapeHtml(a.name)}</div>
         <div class="lift-scheme">${meta} · ${why}</div></div><div class="actions">${btns}</div></div>`;
     });
   });
   return `<div class="card" style="margin-top:18px"><div class="card-head"><h3>Strava review</h3><span class="meta">${stravaQueue.length} to resolve</span></div>${rows}</div>`;
+}
+/* after linking an activity onto another day, ask what to do with the plan that
+   day displaced (e.g. ran today instead of the planned heavy lift) */
+function displacedPromptHtml(){
+  if(!displacedPrompt)return "";
+  const s=buildSessions().find(x=>x.dateStr===displacedPrompt.dateStr);
+  if(!s)return "";
+  return `<div class="card" style="margin-top:18px;border-color:var(--accent)">
+    <div class="card-head"><h3>Linked to another day</h3></div>
+    <div class="lift-row"><div class="lift-meta"><div class="lift-name">${shortDate(s.dateStr)}'s ${sessionLabel(s)} is still planned</div>
+      <div class="lift-scheme">You trained something else that day — what should happen to it?</div></div>
+    <div class="actions">
+      <button class="btn ghost" data-dp="leave">Leave planned</button>
+      <button class="btn" data-dp="skip">Mark skipped</button>
+      <button class="btn" data-dp="move">Move to next open day</button>
+    </div></div></div>`;
 }
 function wireQueue(root){
   root.querySelectorAll("[data-qa]").forEach(b=>b.onclick=()=>{
@@ -442,8 +471,29 @@ function wireQueue(root){
     if(qa==="dismiss"&&act)state.dismissedActivities.push(act.id);
     else if(qa==="skip")state.status[q.dateStr]="skipped";
     else if(qa==="swap"&&act){state.sessionSwap[q.dateStr]="bike";state.status[q.dateStr]="done";state.activities[q.dateStr]=act;}
-    else if(qa==="attach"&&act){state.status[b.dataset.date]="done";state.activities[b.dataset.date]=act;}
+    else if(qa==="attach"&&act){
+      const target=b.dataset.date;
+      state.status[target]="done";state.activities[target]=act;
+      /* linked onto a different day than where the activity happened → that day's
+         own planned session is displaced; offer leave / skip / move */
+      if(target!==q.dateStr){
+        const orig=buildSessions().find(s=>s.dateStr===q.dateStr);
+        const ost=state.status[q.dateStr];
+        if(orig&&ost!=="done"&&ost!=="skipped")displacedPrompt={dateStr:q.dateStr};
+      }
+    }
     stravaQueue.splice(i,1);
+    save();render();
+  });
+  root.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{
+    if(!displacedPrompt)return;
+    const d=displacedPrompt.dateStr;const dp=b.dataset.dp;
+    if(dp==="skip")state.status[d]="skipped";
+    else if(dp==="move"){
+      const s=buildSessions().find(x=>x.dateStr===d);const to=s&&nextOpenDay(d);
+      if(to)state.sessionMove[s.kind+":"+d]=to;
+    }
+    displacedPrompt=null;
     save();render();
   });
 }
@@ -495,7 +545,7 @@ function renderToday(root){
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
       ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
-    </div>${queueCardHtml()}`;
+    </div>${queueCardHtml()}${displacedPromptHtml()}`;
   const rp=root.querySelector("#rotpick");
   if(rp)rp.addEventListener("click",e=>{const b=e.target.closest("[data-rot]");if(!b)return;state.sessionPick[cur.dateStr]=b.dataset.rot;save();render();});
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
@@ -544,7 +594,7 @@ function renderTodayRun(root,cur){
       <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
       <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
       ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
-    </div>${queueCardHtml()}`;
+    </div>${queueCardHtml()}${displacedPromptHtml()}`;
   root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
   root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
   root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};

@@ -60,7 +60,7 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
   - `store.js` — tokens encrypted via `safeStorage` + sync-state JSON (`sync-state.json` in `userData`: credentials, GCal `eventMap`, lastSync/lastError).
   - `oauth.js` — system-browser OAuth, throwaway `http://127.0.0.1:<port>/callback` loopback, PKCE for Google; silent refresh.
   - `gcal.js` — calendar mirror: pure `diffPlan` against the stored `eventMap` (keys `kind:dateStr`), insert/PUT/delete deltas, self-heals hand-deleted events.
-  - `strava.js` — pure `matchActivities(plan, activities)` verdicts + activity fetch/hydrate. Pure parts of both are `node --test`ed like `js/program.js`.
+  - `strava.js` — pure `matchActivities(plan, activities)` verdicts + activity fetch/hydrate. Matching is same-day first; activities with no same-day home surface **cross-day link candidates** (unmatched, same-sport sessions within ±`linkWindow` days, default 3) so a session done on a different day than planned can be linked from the review queue. Pure parts of both are `node --test`ed like `js/program.js`.
 - Renderer pushes a debounced `Program.calendarSnapshot(state)` on every save; planned sessions are all-day events (✓/⨯ prefixes), Strava-confirmed sessions upgrade to timed events at the real start/duration.
 - **`package.json`** — npm scripts (`start`, `test`, `dist`) and the electron-builder config (mac `.dmg` / win `.exe` / linux AppImage; `mac.identity: null` so unsigned personal builds succeed).
 - **`build/`** — generated app icons (`icon.icns`, `icon.ico`, `icon.png`).
@@ -75,6 +75,7 @@ These are defaults, not constraints — every lift is renamable/toggleable and t
   runDays: number[],              // LSS days (Capacity), 0=Sun .. 6=Sat (default [2,4,6]); kept disjoint from liftDays
   enduranceOverrides: { [week]: { [slot]: runSpec } },  // sparse edits over the book table
   sessionSwap: { [dateStr]: "bike" },  // run→bike swap per date
+  sessionMove: { ["kind:dateStr"]: dateStr },  // one-off reschedule of a session to another date (keeps its week/load)
   activities: { [dateStr]: { id, sport, startISO, durationSec, ... } },  // matched Strava activity per date
   dismissedActivities: [],        // Strava ids marked "not training"
   displayName: string,

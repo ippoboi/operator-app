@@ -21,6 +21,24 @@ test("operator6: 6 weeks x 3 lift days = 18 sessions, Mon/Wed/Fri", () => {
   assert.deepEqual([...new Set(sess.map(x => x.date.getDay()))].sort(), [1, 3, 5]);
 });
 
+test("sessionMove relocates a session to another date, keeping its week and load", () => {
+  const s = baseState({ sessionMove: { "lift:2026-01-05": "2026-01-08" } });
+  const sess = Program.buildSessions(s);
+  assert.equal(sess.length, 18); // count unchanged
+  assert.equal(sess.filter(x => x.dateStr === "2026-01-05").length, 0); // gone from origin
+  const moved = sess.find(x => x.dateStr === "2026-01-08");
+  assert.equal(moved.kind, "lift");
+  assert.equal(moved.week, 1);          // keeps its prescribed week
+  assert.equal(moved.pct, 0.70);        // and load
+  assert.equal(moved.movedFrom, "2026-01-05");
+  assert.equal(moved.date.getDate(), 8); // date object follows the move
+});
+
+test("sessionMove with no matching session is a harmless no-op", () => {
+  const s = baseState({ sessionMove: { "lift:1999-01-01": "1999-01-02" } });
+  assert.equal(Program.buildSessions(s).length, 18);
+});
+
 test("operator6: wave is 70/80/90/75/85/95 with deload on week 4", () => {
   const s = baseState();
   const byWeek = w => Program.buildSessions(s).find(x => x.week === w);
