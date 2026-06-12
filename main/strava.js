@@ -25,8 +25,14 @@ function summarize(a) {
   };
 }
 
+const DAY_MS = 86400000;
+const dayNum = ds => Math.round(Date.parse(ds + "T00:00:00Z") / DAY_MS);
+
 /* sessions: [{dateStr, kind, sport, status, activityId}] (sport has bike swap applied)
-   rawActivities: Strava summaries; opts: {dismissed, today, windowStart} */
+   rawActivities: Strava summaries
+   opts: {dismissed, today, windowStart, linkWindow} — linkWindow (default 3) is the
+   ±days radius for surfacing cross-day attach candidates when an activity has no
+   same-day home (e.g. a run done today fulfilling yesterday's skipped run). */
 function matchActivities(sessions, rawActivities, opts) {
   opts = opts || {};
   const dism = new Set((opts.dismissed || []).map(String));
@@ -39,6 +45,20 @@ function matchActivities(sessions, rawActivities, opts) {
   const actsByDay = {};
   acts.forEach(a => { const d = String(a.startLocal).slice(0, 10); (actsByDay[d] = actsByDay[d] || []).push(a); });
 
+  /* unmatched, non-skipped, sport-compatible sessions within ±linkWindow days of
+     `day` (excluding `day` itself) — the cross-day attach offers, nearest first */
+  const linkWindow = opts.linkWindow == null ? 3 : opts.linkWindow;
+  function nearbyCompat(day, sport) {
+    if (sport == null) return [];
+    const d0 = dayNum(day);
+    return sessions
+      .filter(s => s.sport === sport && s.status !== "skipped" && s.activityId == null &&
+                   s.dateStr !== day && Math.abs(dayNum(s.dateStr) - d0) <= linkWindow)
+      .sort((a, b) => Math.abs(dayNum(a.dateStr) - d0) - Math.abs(dayNum(b.dateStr) - d0) ||
+                      a.dateStr.localeCompare(b.dateStr))
+      .map(s => ({ dateStr: s.dateStr, kind: s.kind, crossDay: true }));
+  }
+
   const matches = [], queue = [];
   const matchedDays = new Set();
 
@@ -46,7 +66,8 @@ function matchActivities(sessions, rawActivities, opts) {
     const dayActs = actsByDay[day];
     const daySess = (sessByDay[day] || []).filter(s => s.status !== "skipped" && s.activityId == null);
     if (!daySess.length) {
-      dayActs.forEach(a => queue.push({ type: "restday", dateStr: day, activity: a }));
+      dayActs.forEach(a => queue.push({ type: "restday", dateStr: day, activity: a,
+                                        candidates: nearbyCompat(day, a.sport) }));
       return;
     }
     if (dayActs.length > 1) {
@@ -69,7 +90,7 @@ function matchActivities(sessions, rawActivities, opts) {
     const swappable = a.sport === "bike" && daySess.find(s => s.kind === "run" && s.sport === "run");
     if (swappable) { queue.push({ type: "swap", dateStr: swappable.dateStr, kind: "run", activity: a }); return; }
     queue.push({ type: "mismatch", dateStr: day, activity: a,
-                 candidates: daySess.map(s => ({ dateStr: s.dateStr, kind: s.kind })) });
+                 candidates: daySess.map(s => ({ dateStr: s.dateStr, kind: s.kind })).concat(nearbyCompat(day, a.sport)) });
   });
 
   if (opts.today && opts.windowStart) {

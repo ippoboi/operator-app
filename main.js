@@ -127,7 +127,7 @@ app.whenReady().then(() => {
       const after = Math.floor(Date.now() / 1000) - 14 * 86400;
       const acts = await strava.fetchActivities(token, after);
       const result = strava.matchActivities(plan.sessions, acts,
-        { dismissed: plan.dismissed, today: plan.today, windowStart: plan.windowStart });
+        { dismissed: plan.dismissed, today: plan.today, windowStart: plan.windowStart, linkWindow: plan.linkWindow });
       await strava.hydrateDescriptions(result, token);
       store.update(s => { s.strava.lastFetch = new Date().toISOString(); s.strava.lastError = null; });
       return result;

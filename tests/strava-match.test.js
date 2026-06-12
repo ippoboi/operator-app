@@ -95,6 +95,32 @@ test("past in-window session with no activity and no status → missed", () => {
   assert.deepEqual(r.queue[0], { type: "missed", dateStr: "2026-06-08", kind: "lift" });
 });
 
+test("run done on a lift day surfaces a nearby planned run as a cross-day link", () => {
+  const sessions = [S("2026-06-10", "run", "run"), S("2026-06-11", "lift", "lift")];
+  const r = matchActivities(sessions, [A(20, "Run", "2026-06-11")], OPTS);
+  assert.equal(r.matches.length, 0);
+  const q = r.queue.find(x => x.type === "mismatch");
+  assert.ok(q.candidates.some(c => c.dateStr === "2026-06-10" && c.kind === "run" && c.crossDay === true));
+});
+
+test("activity on a rest day links to a nearby same-sport session", () => {
+  const r = matchActivities([S("2026-06-09", "run", "run")], [A(21, "Run", "2026-06-10")], OPTS);
+  const q = r.queue.find(x => x.type === "restday");
+  assert.deepEqual(q.candidates, [{ dateStr: "2026-06-09", kind: "run", crossDay: true }]);
+});
+
+test("cross-day candidates respect the link window (default ±3 days)", () => {
+  const r = matchActivities([S("2026-06-01", "run", "run")], [A(22, "Run", "2026-06-10")], OPTS);
+  assert.deepEqual(r.queue.find(x => x.type === "restday").candidates, []);
+});
+
+test("cross-day candidates skip skipped and already-matched sessions", () => {
+  const sessions = [S("2026-06-09", "run", "run", { status: "skipped" }),
+    S("2026-06-08", "run", "run", { activityId: 99 })];
+  const r = matchActivities(sessions, [A(23, "Run", "2026-06-10")], OPTS);
+  assert.deepEqual(r.queue.find(x => x.type === "restday").candidates, []);
+});
+
 test("TrailRun/VirtualRide variants normalize to run/bike", () => {
   const r = matchActivities([S("2026-06-09", "run", "run"), S("2026-06-10", "run", "bike")],
     [A(12, "TrailRun", "2026-06-09"), A(13, "VirtualRide", "2026-06-10")], OPTS);
