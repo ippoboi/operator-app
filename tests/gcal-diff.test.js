@@ -45,3 +45,59 @@ test("diff: vanished key deletes", () => {
   const d = diffPlan([], map);
   assert.deepEqual(d.deletes, [{ key: "lift:2026-06-15", eventId: "e1" }]);
 });
+
+test("diff: drifted entry patches even when the hash matches", () => {
+  const known = EV("lift:2026-06-15");
+  const map = { "lift:2026-06-15": { eventId: "e1", hash: hashEvent(known), drifted: true } };
+  const d = diffPlan([known], map);
+  assert.equal(d.patches.length, 1);
+  assert.equal(d.patches[0].eventId, "e1");
+});
+
+test("syncPlan: remote edit (updated stamp moved) forces a repair PUT", async () => {
+  const { syncPlan } = require("../main/gcal.js");
+  const ev = EV("lift:2026-06-15");
+  const calls = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    const method = opts.method || "GET";
+    calls.push(method + " " + url);
+    const json = (() => {
+      if (url.includes("/events?")) return { items: [{ id: "e1", updated: "2026-06-11T12:50:10.793Z" }] };
+      if (method === "PUT") return { id: "e1", updated: "2026-06-12T09:00:00.000Z" };
+      return {}; // calendar GET
+    })();
+    return { ok: true, status: 200, json: async () => json };
+  };
+  try {
+    const res = await syncPlan([ev], {
+      token: "t", calendarId: "cal1",
+      /* hash matches the snapshot, but our recorded `updated` predates a remote edit */
+      eventMap: { "lift:2026-06-15": { eventId: "e1", hash: hashEvent(ev), updated: "2026-06-10T00:00:00.000Z" } },
+    });
+    assert.ok(calls.some(c => c.startsWith("PUT ") && c.includes("/events/e1")), calls.join("\n"));
+    assert.equal(res.eventMap["lift:2026-06-15"].updated, "2026-06-12T09:00:00.000Z");
+  } finally { global.fetch = realFetch; }
+});
+
+test("syncPlan: matching updated stamp is a no-op (no writes)", async () => {
+  const { syncPlan } = require("../main/gcal.js");
+  const ev = EV("lift:2026-06-15");
+  const calls = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    const method = opts.method || "GET";
+    calls.push(method + " " + url);
+    const json = url.includes("/events?")
+      ? { items: [{ id: "e1", updated: "2026-06-11T12:50:10.793Z" }] }
+      : {};
+    return { ok: true, status: 200, json: async () => json };
+  };
+  try {
+    await syncPlan([ev], {
+      token: "t", calendarId: "cal1",
+      eventMap: { "lift:2026-06-15": { eventId: "e1", hash: hashEvent(ev), updated: "2026-06-11T12:50:10.793Z" } },
+    });
+    assert.ok(!calls.some(c => c.startsWith("PUT ") || c.startsWith("POST ")), calls.join("\n"));
+  } finally { global.fetch = realFetch; }
+});

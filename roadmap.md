@@ -1,4 +1,4 @@
-V.1 — complete
+V.1 — shipped & verified live 2026-06-11 (OAuth, GCal mirror, Strava sync all working)
 
 - [x] Connect Google Calendar to have live updates, remove the time
 - [x] The running / LSS side of the Tactical Barbell Green Protocol (this app is the lifting half only).
@@ -7,22 +7,16 @@ V.1 — complete
 - [x] Way to compare what was done from Strava Description
 - [x] Calendar view not just list WoW
 - [x] Improve the settings/setup
-- [x] Link a Strava activity to a workout planned on a different day, and reschedule (leave / skip / move) the session it displaces
 
-V.2 — rebuild
+V.2
 
-- Migrate to Next.js, static export wrapped in Electron
-- Port program.js to program.ts, keep the tests
-- Refresh the design
-- Unify the session card into one component
-- Add a backend with a database
-- Add account/auth
+- Real backend: auth + DB, Docker on the home server — promote `main/` + the `window.api` seam to HTTP
 - API WHOOP data
 - Add AI assistant
+- Other TB templates (Op/Pro, Op/DUP, Fighter, etc.).
 
 V.n
 
-- Track nutrition
-- Customize workouts through exercises
-- Other TB templates (Op/Pro, Op/DUP, Fighter, etc.)
+- Be able to customize workouts through exercises
+- Be able to track nutrition
 - Mobile app

@@ -25,7 +25,7 @@ function diffPlan(snapshot, eventMap) {
   Object.entries(want).forEach(([key, ev]) => {
     const cur = eventMap[key];
     if (!cur) inserts.push({ key, ev });
-    else if (cur.hash !== hashEvent(ev)) patches.push({ key, ev, eventId: cur.eventId });
+    else if (cur.hash !== hashEvent(ev) || cur.drifted) patches.push({ key, ev, eventId: cur.eventId });
   });
   Object.entries(eventMap).forEach(([key, cur]) => { if (!want[key]) deletes.push({ key, eventId: cur.eventId }); });
   return { inserts, patches, deletes };
@@ -62,40 +62,48 @@ async function ensureCalendar(token, calendarId) {
   return created.id;
 }
 
-async function listEventIds(token, calId) {
-  const ids = new Set();
+/* id -> last-modified stamp; the stamp is our proof the remote event still
+   holds what we last wrote (manual edits / a racing writer move it) */
+async function listEvents(token, calId) {
+  const live = new Map();
   let pageToken = "";
   do {
-    const q = "?maxResults=2500&fields=items(id),nextPageToken" + (pageToken ? "&pageToken=" + pageToken : "");
+    const q = "?maxResults=2500&fields=items(id,updated),nextPageToken" + (pageToken ? "&pageToken=" + pageToken : "");
     const data = await api(token, "GET", "/calendars/" + encodeURIComponent(calId) + "/events" + q);
-    (data.items || []).forEach(ev => ids.add(ev.id));
+    (data.items || []).forEach(ev => live.set(ev.id, ev.updated));
     pageToken = data.nextPageToken || "";
   } while (pageToken);
-  return ids;
+  return live;
 }
 
 /* deps: {token, calendarId, eventMap} -> {calendarId, eventMap} (caller persists) */
 async function syncPlan(snapshot, deps) {
   const calId = await ensureCalendar(deps.token, deps.calendarId);
   if (deps.onCalendar) deps.onCalendar(calId); // let the caller persist it before the slow insert phase
-  const liveIds = await listEventIds(deps.token, calId);
+  const live = await listEvents(deps.token, calId);
   const eventMap = {};
-  /* drop entries whose event was deleted by hand — the diff re-inserts them (self-heal) */
-  Object.entries(deps.eventMap || {}).forEach(([k, v]) => { if (liveIds.has(v.eventId)) eventMap[k] = v; });
+  /* drop entries whose event was deleted by hand — the diff re-inserts them (self-heal).
+     Surviving entries whose remote stamp moved since our last write are marked drifted
+     so the diff re-pushes them even when our own hash says nothing changed. */
+  Object.entries(deps.eventMap || {}).forEach(([k, v]) => {
+    if (!live.has(v.eventId)) return;
+    eventMap[k] = { eventId: v.eventId, hash: v.hash, updated: v.updated };
+    if (v.updated !== live.get(v.eventId)) eventMap[k].drifted = true;
+  });
   const { inserts, patches, deletes } = diffPlan(snapshot, eventMap);
   const base = "/calendars/" + encodeURIComponent(calId) + "/events";
   for (const { key, ev } of inserts) {
     const created = await api(deps.token, "POST", base, eventBody(ev));
-    eventMap[key] = { eventId: created.id, hash: hashEvent(ev) };
+    eventMap[key] = { eventId: created.id, hash: hashEvent(ev), updated: created.updated };
   }
   for (const { key, ev, eventId } of patches) {
     try {
-      await api(deps.token, "PUT", base + "/" + eventId, eventBody(ev));
-      eventMap[key] = { eventId, hash: hashEvent(ev) };
+      const put = await api(deps.token, "PUT", base + "/" + eventId, eventBody(ev));
+      eventMap[key] = { eventId, hash: hashEvent(ev), updated: put && put.updated };
     } catch (e) {
       if (e.status === 404 || e.status === 410) {
         const created = await api(deps.token, "POST", base, eventBody(ev));
-        eventMap[key] = { eventId: created.id, hash: hashEvent(ev) };
+        eventMap[key] = { eventId: created.id, hash: hashEvent(ev), updated: created.updated };
       } else throw e;
     }
   }
@@ -107,4 +115,4 @@ async function syncPlan(snapshot, deps) {
   return { calendarId: calId, eventMap };
 }
 
-module.exports = { diffPlan, eventBody, hashEvent, ensureCalendar, listEventIds, syncPlan };
+module.exports = { diffPlan, eventBody, hashEvent, ensureCalendar, listEvents, syncPlan };

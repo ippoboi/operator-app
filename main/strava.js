@@ -120,12 +120,12 @@ async function hydrateDescriptions(result, token) {
     ...result.matches.map(m => m.activity),
     ...result.queue.flatMap(q => q.activity ? [q.activity] : (q.activities || [])),
   ];
-  for (const a of targets) {
+  await Promise.all(targets.map(async a => {
     try {
       const res = await fetch(API + "/activities/" + a.id, { headers: { Authorization: "Bearer " + token } });
       if (res.ok) { const d = await res.json(); a.description = d.description || ""; }
     } catch (e) { /* description is cosmetic — keep going */ }
-  }
+  }));
 }
 
 module.exports = { matchActivities, summarize, sportOf, fetchActivities, hydrateDescriptions };

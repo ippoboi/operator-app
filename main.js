@@ -1,5 +1,14 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+
+/* Two instances share sync-state.json and race the GCal push: one writes the
+   eventMap while the other rewrites the events, leaving the map claiming
+   content Google no longer holds. Refuse to run twice. */
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on("second-instance", () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+});
 const store = require("./main/store.js");
 const oauth = require("./main/oauth.js");
 const gcal = require("./main/gcal.js");

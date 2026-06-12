@@ -305,7 +305,7 @@ const Program = (() => {
     targetFor, sessionTargets, currentSession,
     STORAGE_KEY, LEGACY_KEY, migrateV1,
     monthMatrix, parseRunSpec, runEditLabel,
-    calendarSnapshot, liftAbbrev,
+    calendarSnapshot, liftAbbrev, fmtKg,
   };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = Program;

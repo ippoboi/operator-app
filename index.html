@@ -281,7 +281,7 @@ const sessionTargets = (s) => Program.sessionTargets(state, s);
 const currentSession = (s) => Program.currentSession(state, s);
 const weekSpec = (w) => Program.weekSpec(state, w);
 function pad(n){return String(n).padStart(2,"0");}
-function fmt(n){return (Math.round(n*10)/10).toString();}
+const fmt=Program.fmtKg;
 
 function load(){
   try{
@@ -352,6 +352,8 @@ function escapeAttr(s){return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt
 function shortName(n){return n.replace("Front Squat","F.Squat").replace("Sumo Deadlift","Sumo DL").replace("Weighted Pull-up","Pull-up").replace("DB Bench Press","DB Bench");}
 function shortDate(ds){const d=parseYMD(ds);return DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});}
 function sessionLabel(s){return s.kind==="lift"?"🏋 strength":(Program.sportFor(state,s)==="bike"?"🚴 bike":"🏃 run");}
+function toggleStatus(d,val){state.status[d]=state.status[d]===val?undefined:val;}
+function toggleSwap(d){if(state.sessionSwap[d]==="bike")delete state.sessionSwap[d];else state.sessionSwap[d]="bike";}
 /* first date after `fromDateStr` with no planned session — the move-forward target */
 function nextOpenDay(fromDateStr){
   const taken=new Set(buildSessions().map(s=>s.dateStr));
@@ -498,9 +500,26 @@ function wireQueue(root){
   });
 }
 
+/* readiness + done/skip/sync blocks shared by the lift and run Today views */
+function readinessHtml(r){
+  return `<div class="readiness" id="readiness">${["green","amber","red"].map(v=>`<button class="rb" data-r="${v}" ${r===v?`data-on="${v}"`:""}>${v[0].toUpperCase()+v.slice(1)}</button>`).join("")}</div>`;
+}
+function sessionActionsHtml(st){
+  return `<button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
+      <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
+      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}`;
+}
+function wireSessionCommon(root,cur){
+  root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
+  root.querySelector("#doneBtn").onclick=()=>{toggleStatus(cur.dateStr,"done");save();render();};
+  root.querySelector("#skipBtn").onclick=()=>{toggleStatus(cur.dateStr,"skipped");save();render();};
+  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
+  wireQueue(root);
+}
+
 function renderToday(root){
   const sessions=buildSessions();const cur=currentSession(sessions);
-  if(cur&&cur.kind==="run"){renderTodayRun(root,cur);return;}
+  if(cur&&cur.kind==="run"){renderTodayRun(root,cur,sessions);return;}
   if(!hasAnyTM()||!cur){
     root.innerHTML=`<div class="greet">${escapeHtml(greeting())}</div>
       <div class="empty"><h3>No numbers yet</h3><p>Add your training maxes in Setup and today's targets land here.</p>
@@ -508,7 +527,7 @@ function renderToday(root){
     root.querySelector("#toSetup").onclick=()=>{activeTab="setup";render();};return;
   }
   const isToday=cur.dateStr===ymd(todayDate());
-  const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
+  const d=cur.date;const dateLabel=shortDate(cur.dateStr);
   const pct=Math.round(cur.pct*100);
   const done=statusCount(sessions,"done");
   const lifts=sessionLifts(cur).map(l=>shortName(l.name)).join(", ");
@@ -535,33 +554,23 @@ function renderToday(root){
       <div class="card-head"><h3>${isToday?"Today's session":"Next session"}${cur.optional?' · <span style="color:var(--amber)">Deload — do not add plates</span>':""}</h3><span class="meta">${dateLabel} · ${cur.sets}×${cur.reps}</span></div>
       ${withActual(cur,rows)}
     </div>
-    <div class="readiness" id="readiness">
-      <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
-      <button class="rb" data-r="amber" ${r==="amber"?'data-on="amber"':""}>Amber</button>
-      <button class="rb" data-r="red" ${r==="red"?'data-on="red"':""}>Red</button>
-    </div>
+    ${readinessHtml(r)}
     <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
     <div class="actions">
-      <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
-      <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+      ${sessionActionsHtml(st)}
     </div>${queueCardHtml()}${displacedPromptHtml()}`;
   const rp=root.querySelector("#rotpick");
   if(rp)rp.addEventListener("click",e=>{const b=e.target.closest("[data-rot]");if(!b)return;state.sessionPick[cur.dateStr]=b.dataset.rot;save();render();});
-  root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
-  root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
-  root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
-  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
-  wireQueue(root);
+  wireSessionCommon(root,cur);
 }
 
-function renderTodayRun(root,cur){
+function renderTodayRun(root,cur,sessions){
   const isToday=cur.dateStr===ymd(todayDate());
-  const d=cur.date;const dateLabel=DOW[d.getDay()]+" "+d.getDate()+" "+d.toLocaleString("en",{month:"short"});
+  const d=cur.date;const dateLabel=shortDate(cur.dateStr);
   const sport=Program.sportFor(state,cur);
   const st=state.status[cur.dateStr]||null;
   const r=state.readiness[cur.dateStr]||null;
-  const done=statusCount(buildSessions(),"done");
+  const done=statusCount(sessions,"done");
   const label=Program.runLabel(cur.run);
   const title=cur.run.type==="test"?cur.run.name:(sport==="bike"?"LSS Bike":"LSS Run");
   const hint=cur.run.type==="test"?("Benchmark — target under "+cur.run.targetMin+":00, flat course.")
@@ -583,24 +592,14 @@ function renderTodayRun(root,cur){
         <div class="lift-scheme">${escapeHtml(hint)}</div></div>
         <div class="lift-val"><div class="kg run">${escapeHtml(label)}</div></div></div>`)}
     </div>
-    <div class="readiness" id="readiness">
-      <button class="rb" data-r="green" ${r==="green"?'data-on="green"':""}>Green</button>
-      <button class="rb" data-r="amber" ${r==="amber"?'data-on="amber"':""}>Amber</button>
-      <button class="rb" data-r="red" ${r==="red"?'data-on="red"':""}>Red</button>
-    </div>
+    ${readinessHtml(r)}
     <div class="nudge">${r?nudges[r]:"Tap how you feel to gate the session."}</div>
     <div class="actions">
       <button class="btn" id="swapBtn">${sport==="bike"?"Back to run":"Swap to bike"}</button>
-      <button class="btn" id="doneBtn" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
-      <button class="btn ghost" id="skipBtn" ${st==="skipped"?'data-state="skipped"':""}>${st==="skipped"?"Skipped":"Skip"}</button>
-      ${stravaConnected()?`<button class="btn ghost" id="syncBtn">↻ Sync Strava</button>`:""}
+      ${sessionActionsHtml(st)}
     </div>${queueCardHtml()}${displacedPromptHtml()}`;
-  root.querySelector("#readiness").addEventListener("click",e=>{const b=e.target.closest(".rb");if(!b)return;const v=b.dataset.r;state.readiness[cur.dateStr]=state.readiness[cur.dateStr]===v?undefined:v;save();render();});
-  root.querySelector("#swapBtn").onclick=()=>{if(state.sessionSwap[cur.dateStr]==="bike")delete state.sessionSwap[cur.dateStr];else state.sessionSwap[cur.dateStr]="bike";save();render();};
-  root.querySelector("#doneBtn").onclick=()=>{state.status[cur.dateStr]=st==="done"?undefined:"done";save();render();};
-  root.querySelector("#skipBtn").onclick=()=>{state.status[cur.dateStr]=st==="skipped"?undefined:"skipped";save();render();};
-  const sb=root.querySelector("#syncBtn");if(sb)sb.onclick=()=>runStravaSync();
-  wireQueue(root);
+  root.querySelector("#swapBtn").onclick=()=>{toggleSwap(cur.dateStr);save();render();};
+  wireSessionCommon(root,cur);
 }
 
 function chipFor(s){
@@ -647,7 +646,7 @@ function renderCalendar(root){
 
 function calDetailHtml(ss){
   return ss.map(s=>{
-    const dateLabel=DOW[s.date.getDay()]+" "+s.date.getDate()+" "+s.date.toLocaleString("en",{month:"short"});
+    const dateLabel=shortDate(s.dateStr);
     const st=state.status[s.dateStr]||null;
     const statusBtns=`<div class="actions" style="padding:14px 18px">
       <button class="btn" data-act="done" data-date="${s.dateStr}" ${st==="done"?'data-state="done"':""}>${st==="done"?"✓ Done":"Mark done"}</button>
@@ -671,9 +670,9 @@ function calDetailHtml(ss){
 function wireCalDetail(root){
   root.querySelectorAll("#calDetail [data-act]").forEach(b=>b.onclick=()=>{
     const d=b.dataset.date;const act=b.dataset.act;
-    if(act==="done")state.status[d]=state.status[d]==="done"?undefined:"done";
-    else if(act==="skip")state.status[d]=state.status[d]==="skipped"?undefined:"skipped";
-    else if(act==="swap"){if(state.sessionSwap[d]==="bike")delete state.sessionSwap[d];else state.sessionSwap[d]="bike";}
+    if(act==="done")toggleStatus(d,"done");
+    else if(act==="skip")toggleStatus(d,"skipped");
+    else if(act==="swap")toggleSwap(d);
     else if(act==="rot")state.sessionPick[d]=b.dataset.rot;
     save();render();
   });
